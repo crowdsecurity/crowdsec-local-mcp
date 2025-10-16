@@ -48,6 +48,14 @@ Install dependencies using `uv`:
 uv sync
 ```
 
+### Quick MCP client setup
+
+- Configure supported clients automatically with `uvx run --from crowdsec-local-mcp init <client>`, where `<client>` is one of `claude-desktop`, `chatgpt`, `vscode`, or `stdio`.
+
+### Logging
+
+- The MCP server writes its log file to your operating system's temporary directory. On Linux/macOS this is typically `/tmp/crowdsec-mcp.log`; on Windows it resolves via `%TEMP%\crowdsec-mcp.log`.
+
 ## Configuration for Claude Desktop
 
 ### macOS/Linux
