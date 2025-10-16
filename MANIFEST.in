@@ -1,0 +1,3 @@
+recursive-include src/crowdsec_local_mcp/prompts *.txt
+recursive-include src/crowdsec_local_mcp/compose *
+recursive-include src/crowdsec_local_mcp/yaml-schemas *.yaml

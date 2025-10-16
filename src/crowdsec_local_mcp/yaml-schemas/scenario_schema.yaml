@@ -1,0 +1,591 @@
+$schema: "https://json-schema.org/draft-04/schema"
+$id: "http://schemas.crowdsec.net/schemas/scenario.yaml"
+title: "CrowdSec Scenario"
+oneOf:
+  - $ref: "#/$defs/leaky"
+  - $ref: "#/$defs/counter"
+  - $ref: "#/$defs/trigger"     
+  - $ref: "#/$defs/conditional"     
+$defs:
+  leaky:
+    type: object
+    properties:
+      type:
+        type: string
+        enum:
+          - leaky
+        description: |
+          Defines the type of the bucket. Currently three types are
+          supported : leaky : a leaky bucket that must be configured
+          with a capacity and a leakspeed trigger : a bucket that
+          overflows as soon as an event is poured (it is like a leaky
+          bucket is a capacity of 0) counter : a bucket that only
+          overflows every duration. It is especially useful to count
+          things.
+      leakspeed:
+        type: string
+        description: |
+          Only applies to leaky buckets. A duration that represent how
+          often an event will be leaking from the bucket.
+        pattern: >-
+          ^([0-9]+(\.[0-9]+)*d)?([0-9]+(\.[0-9]+)*h)?([0-9]+(\.[0-9]+)*m)?([0-9]+(\.[0-9]+)*s)?([0-9]+(\.[0-9]+)*ms)?([0-9]+(\.[0-9]+)*(us|µs))?([0-9]+(\.[0-9]+)*ns)?$
+      references:
+        description: |
+          Reference to external paper or documentation
+        anyOf:
+          - type: string
+          - type: array
+      name:
+        type: string
+        description: |
+          "github_account_name/my_scenario_name" or name:
+          "my_author_name/my_scenario_name" name is mandatory
+      capacity:
+        type: integer
+        description: |
+          Only applies to leaky buckets. A positive integer
+          representing the bucket capacity. If there are more than
+          capacity item in the bucket, it will overflow.
+      description:
+        type: string
+        description: |
+          The description is mandatory.  It is a short description,
+          probably one sentence, describing what it detects.
+      filter:
+        type: string
+        description: |
+          filter must be a valid expr expression that will be evaluated
+          against the event.  If filter evaluation returns true or is
+          absent, event will be pour in the bucket.  If filter returns
+          false or a non-boolean, the event will be skipped for this
+          bucket.
+      groupby:
+        type: string
+        description: |
+          An expr expression that must return a string. This string will
+          be used as a partition for the buckets.
+      distinct:
+        type: string
+        description: |
+          An expr expression that must return a string. The event will be
+          poured only if the string is not already present in the bucket.
+      format:
+        description: |  
+          CrowdSec has a notion of format support for parsers and
+          scenarios for compatibility management. Running cscli version
+          will show you such compatibility matrix :
+        type: number
+        minimum: 1.0        
+      labels:
+        $ref: "#/$defs/labels" 
+      blackhole:
+        type: string
+        description: |
+          A duration for which a bucket will be "silenced" after
+          overflowing. This is intended to limit / avoid spam of buckets
+          that might be very rapidly triggered.  The blackhole only
+          applies to the individual bucket rather than the whole
+          scenario. Must be compatible with golang ParseDuration format.
+        pattern: >-
+          ^([0-9]+(\.[0-9]+)*d)?([0-9]+(\.[0-9]+)*h)?([0-9]+(\.[0-9]+)*m)?([0-9]+(\.[0-9]+)*s)?([0-9]+(\.[0-9]+)*ms)?([0-9]+(\.[0-9]+)*(us|µs))?([0-9]+(\.[0-9]+)*ns)?$
+      debug:
+        type: boolean
+        description: |
+          If set to to true, enabled scenario level debugging. It is meant
+          to help understanding scenario behavior by providing contextual
+      reprocess:
+        type: boolean
+        description: |
+          If set to true, the resulting overflow will be sent again in the
+          scenario/parsing pipeline. It is useful when you want to have
+          further scenarios that will rely on past-overflows to take
+          decision
+      cache_size:
+        type: number
+        description: |
+          By default, a bucket holds capacity events "in memory". However,
+          for a number of cases, you don't want this, as it might lead to
+          excessive memory consumption.  By setting cache_size to a
+          positive integer, we can control the maximum in-memory cache
+          size of the bucket, without changing its capacity and such. It
+          is useful when buckets are likely to stay alive for a long time
+          or ingest a lot of events to avoid storing a lot of events in
+          memory.
+      overflow_filter:
+        type: string
+        description: |
+          overflow_filter is an expression that is run when the bucket
+          overflows. If this expression is present and returns false, the
+          overflow will be discarded.
+      cancel_on:
+        type: string
+        description: |
+          cancel_on is an expression that runs on each event poured to the
+          bucket. If the cancel_on expression returns true, the bucket is
+          immediately destroyed (and doesn't overflow).
+      data:
+        $ref: "#/$defs/data"
+      scope:
+        type: object
+        description: |
+          While most scenarios might focus on IP addresses, CrowdSec and Bouncers can work with any scope. The scope directive allows you to override the default scope :
+              type is a string representing the scope name
+              expression is an expr expression that will be evaluated to fetch the value
+        properties:
+          type:
+            type: string
+          expression:
+            type: string
+        additionalProperties: false
+    additionalProperties: false  
+    required:
+      - type
+      - name
+      - leakspeed
+      - description
+  counter:
+    type: object
+    properties:
+      type:
+        type: string
+        enum:
+          - counter
+        description: |
+          Defines the type of the bucket. Currently three types are
+          supported : leaky : a leaky bucket that must be configured
+          with a capacity and a leakspeed trigger : a bucket that
+          overflows as soon as an event is poured (it is like a leaky
+          bucket is a capacity of 0) counter : a bucket that only
+          overflows every duration. It is especially useful to count
+          things.
+      duration:
+        type: string
+        description: |
+          Only applies to leaky buckets.
+          A duration that represent how often an event will be leaking from the bucket.
+        pattern: >-
+          ^([0-9]+(\.[0-9]+)*d)?([0-9]+(\.[0-9]+)*h)?([0-9]+(\.[0-9]+)*m)?([0-9]+(\.[0-9]+)*s)?([0-9]+(\.[0-9]+)*ms)?([0-9]+(\.[0-9]+)*(us|µs))?([0-9]+(\.[0-9]+)*ns)?$
+      references:
+        description: |
+          Reference to external paper or documentation
+        anyOf:
+          - type: string
+          - type: array
+      name:
+        type: string
+        description: |
+          "github_account_name/my_scenario_name" or name:
+            "my_author_name/my_scenario_name" name is mandatory
+      description:
+        type: string
+        description: |
+          The description is mandatory.  It is a short description,
+          probably one sentence, describing what it detects.
+      filter:
+        type: string
+        description: |
+          filter must be a valid expr expression that will be evaluated
+          against the event.  If filter evaluation returns true or is
+          absent, event will be pour in the bucket.  If filter returns
+          false or a non-boolean, the event will be skipped for this
+          bucket.
+      groupby:
+        type: string
+        description: |
+          An expr expression that must return a string. This string will
+          be used as a partition for the buckets.
+      distinct:
+        type: string
+        description: |
+          An expr expression that must return a string. The event will be
+          poured only if the string is not already present in the bucket.
+      format:
+        description: |  
+          CrowdSec has a notion of format support for parsers and
+          scenarios for compatibility management. Running cscli version
+          will show you such compatibility matrix :
+        type: number
+        minimum: 1.0        
+      labels:
+        $ref: "#/$defs/labels" 
+      blackhole:
+        type: string
+        description: |
+          A duration for which a bucket will be "silenced" after
+          overflowing. This is intended to limit / avoid spam of buckets
+          that might be very rapidly triggered.  The blackhole only
+          applies to the individual bucket rather than the whole
+          scenario. Must be compatible with golang ParseDuration format.
+        pattern: >-
+          ^([0-9]+(\.[0-9]+)*d)?([0-9]+(\.[0-9]+)*h)?([0-9]+(\.[0-9]+)*m)?([0-9]+(\.[0-9]+)*s)?([0-9]+(\.[0-9]+)*ms)?([0-9]+(\.[0-9]+)*(us|µs))?([0-9]+(\.[0-9]+)*ns)?$
+      debug:
+        type: boolean
+        description: |
+          If set to to true, enabled scenario level debugging. It is meant
+          to help understanding scenario behavior by providing contextual
+      reprocess:
+        type: boolean
+        description: |
+          If set to true, the resulting overflow will be sent again in the
+          scenario/parsing pipeline. It is useful when you want to have
+          further scenarios that will rely on past-overflows to take
+          decision
+      cache_size:
+        type: number
+        description: |
+          By default, a bucket holds capacity events "in memory". However,
+          for a number of cases, you don't want this, as it might lead to
+          excessive memory consumption.  By setting cache_size to a
+          positive integer, we can control the maximum in-memory cache
+          size of the bucket, without changing its capacity and such. It
+          is useful when buckets are likely to stay alive for a long time
+          or ingest a lot of events to avoid storing a lot of events in
+          memory.
+      overflow_filter:
+        type: string
+        description: |
+          overflow_filter is an expression that is run when the bucket
+          overflows. If this expression is present and returns false, the
+          overflow will be discarded.
+      cancel_on:
+        type: string
+        description: |
+          cancel_on is an expression that runs on each event poured to the
+          bucket. If the cancel_on expression returns true, the bucket is
+          immediately destroyed (and doesn't overflow).
+      data:
+        $ref: "#/$defs/data"
+      scope:
+        type: object
+        description: |
+          While most scenarios might focus on IP addresses, CrowdSec and Bouncers can work with any scope. The scope directive allows you to override the default scope :
+              type is a string representing the scope name
+              expression is an expr expression that will be evaluated to fetch the value
+        properties:
+          type:
+            type: string
+          expression:
+            type: string
+        additionalProperties: false
+    additionalProperties: false  
+    required:
+      - type
+      - name
+      - duration
+      - description    
+  trigger:
+    type: object
+    properties:
+      type:
+        type: string
+        enum:
+          - trigger
+        description: |
+          Defines the type of the bucket. Currently three types are
+          supported : leaky : a leaky bucket that must be configured
+          with a capacity and a leakspeed trigger : a bucket that
+          overflows as soon as an event is poured (it is like a leaky
+          bucket is a capacity of 0) counter : a bucket that only
+          overflows every duration. It is especially useful to count
+          things.
+      name:
+        type: string
+        description: |
+          "github_account_name/my_scenario_name" or name:
+            "my_author_name/my_scenario_name" name is mandatory
+      references:
+        description: |
+          Reference to external paper or documentation
+        anyOf:
+          - type: string
+          - type: array
+      description:
+        type: string
+        description: |
+          The description is mandatory.  It is a short description,
+          probably one sentence, describing what it detects.
+      filter:
+        type: string
+        description: |
+          filter must be a valid expr expression that will be evaluated
+          against the event.  If filter evaluation returns true or is
+          absent, event will be pour in the bucket.  If filter returns
+          false or a non-boolean, the event will be skipped for this
+          bucket.
+      groupby:
+        type: string
+        description: |
+          An expr expression that must return a string. This string will
+          be used as a partition for the buckets.
+      distinct:
+        type: string
+        description: |
+          An expr expression that must return a string. The event will be
+          poured only if the string is not already present in the bucket.
+      format:
+        description: |  
+          CrowdSec has a notion of format support for parsers and
+          scenarios for compatibility management. Running cscli version
+          will show you such compatibility matrix :
+        type: number
+        minimum: 1.0        
+      labels:
+        $ref: "#/$defs/labels" 
+      blackhole:
+        type: string
+        description: |
+          A duration for which a bucket will be "silenced" after
+          overflowing. This is intended to limit / avoid spam of buckets
+          that might be very rapidly triggered.  The blackhole only
+          applies to the individual bucket rather than the whole
+          scenario. Must be compatible with golang ParseDuration format.
+        pattern: >-
+          ^([0-9]+(\.[0-9]+)*d)?([0-9]+(\.[0-9]+)*h)?([0-9]+(\.[0-9]+)*m)?([0-9]+(\.[0-9]+)*s)?([0-9]+(\.[0-9]+)*ms)?([0-9]+(\.[0-9]+)*(us|µs))?([0-9]+(\.[0-9]+)*ns)?$
+      debug:
+        type: boolean
+        description: |
+          If set to to true, enabled scenario level debugging. It is meant
+          to help understanding scenario behavior by providing contextual
+      reprocess:
+        type: boolean
+        description: |
+          If set to true, the resulting overflow will be sent again in the
+          scenario/parsing pipeline. It is useful when you want to have
+          further scenarios that will rely on past-overflows to take
+          decision
+      cache_size:
+        type: number
+        description: |
+          By default, a bucket holds capacity events "in memory". However,
+          for a number of cases, you don't want this, as it might lead to
+          excessive memory consumption.  By setting cache_size to a
+          positive integer, we can control the maximum in-memory cache
+          size of the bucket, without changing its capacity and such. It
+          is useful when buckets are likely to stay alive for a long time
+          or ingest a lot of events to avoid storing a lot of events in
+          memory.
+      overflow_filter:
+        type: string
+        description: |
+          overflow_filter is an expression that is run when the bucket
+          overflows. If this expression is present and returns false, the
+          overflow will be discarded.
+      cancel_on:
+        type: string
+        description: |
+          cancel_on is an expression that runs on each event poured to the
+          bucket. If the cancel_on expression returns true, the bucket is
+          immediately destroyed (and doesn't overflow).
+      data:
+        $ref: "#/$defs/data"
+      scope:
+        type: object
+        description: |
+          While most scenarios might focus on IP addresses, CrowdSec
+          and Bouncers can work with any scope. The scope directive
+          allows you to override the default scope : type is a string
+          representing the scope name expression is an expr expression
+          that will be evaluated to fetch the value
+        properties:
+          type:
+            type: string
+          expression:
+            type: string
+        additionalProperties: false
+    additionalProperties: false  
+    required:
+      - type
+      - name
+      - description
+  labels:
+    type: object
+    description: |
+      Labels is a list of label: values that provide context to an
+      overflow. The labels are (currently) not stored in the database,
+      nor they are sent to the API.  Special labels : The remediation
+      label, if set to true indicate the the originating IP should be
+      banned.
+    patternProperties:
+      "^.*$":
+        type:
+          - string
+          - boolean
+          - array
+          - integer
+  conditional:
+    type: object
+    properties:
+      type:
+        type: string
+        enum:
+          - conditional
+        description: |
+          Defines the type of the bucket. Currently three types are
+          supported : leaky : a leaky bucket that must be configured
+          with a capacity and a leakspeed trigger : a bucket that
+          overflows as soon as an event is poured (it is like a leaky
+          bucket is a capacity of 0) counter : a bucket that only
+          overflows every duration. It is especially useful to count
+          things.
+      condition:
+        type: string
+        description: |
+          Make the bucket overflow when it returns true. The expression is evaluated each time an event is poured to the bucket.
+      leakspeed:
+        type: string
+        description: |
+          Only applies to leaky buckets. A duration that represent how
+          often an event will be leaking from the bucket.
+        pattern: >-
+          ^([0-9]+(\.[0-9]+)*d)?([0-9]+(\.[0-9]+)*h)?([0-9]+(\.[0-9]+)*m)?([0-9]+(\.[0-9]+)*s)?([0-9]+(\.[0-9]+)*ms)?([0-9]+(\.[0-9]+)*(us|µs))?([0-9]+(\.[0-9]+)*ns)?$
+      references:
+        description: |
+          Reference to external paper or documentation
+        anyOf:
+          - type: string
+          - type: array
+      name:
+        type: string
+        description: |
+          "github_account_name/my_scenario_name" or name:
+          "my_author_name/my_scenario_name" name is mandatory
+      capacity:
+        type: integer
+        description: |
+          Only applies to leaky buckets. A positive integer
+          representing the bucket capacity. If there are more than
+          capacity item in the bucket, it will overflow.
+      description:
+        type: string
+        description: |
+          The description is mandatory.  It is a short description,
+          probably one sentence, describing what it detects.
+      filter:
+        type: string
+        description: |
+          filter must be a valid expr expression that will be evaluated
+          against the event.  If filter evaluation returns true or is
+          absent, event will be pour in the bucket.  If filter returns
+          false or a non-boolean, the event will be skipped for this
+          bucket.
+      groupby:
+        type: string
+        description: |
+          An expr expression that must return a string. This string will
+          be used as a partition for the buckets.
+      distinct:
+        type: string
+        description: |
+          An expr expression that must return a string. The event will be
+          poured only if the string is not already present in the bucket.
+      format:
+        description: |  
+          CrowdSec has a notion of format support for parsers and
+          scenarios for compatibility management. Running cscli version
+          will show you such compatibility matrix :
+        type: number
+        minimum: 1.0        
+      labels:
+        $ref: "#/$defs/labels" 
+      blackhole:
+        type: string
+        description: |
+          A duration for which a bucket will be "silenced" after
+          overflowing. This is intended to limit / avoid spam of buckets
+          that might be very rapidly triggered.  The blackhole only
+          applies to the individual bucket rather than the whole
+          scenario. Must be compatible with golang ParseDuration format.
+        pattern: >-
+          ^([0-9]+(\.[0-9]+)*d)?([0-9]+(\.[0-9]+)*h)?([0-9]+(\.[0-9]+)*m)?([0-9]+(\.[0-9]+)*s)?([0-9]+(\.[0-9]+)*ms)?([0-9]+(\.[0-9]+)*(us|µs))?([0-9]+(\.[0-9]+)*ns)?$
+      debug:
+        type: boolean
+        description: |
+          If set to to true, enabled scenario level debugging. It is meant
+          to help understanding scenario behavior by providing contextual
+      reprocess:
+        type: boolean
+        description: |
+          If set to true, the resulting overflow will be sent again in the
+          scenario/parsing pipeline. It is useful when you want to have
+          further scenarios that will rely on past-overflows to take
+          decision
+      cache_size:
+        type: number
+        description: |
+          By default, a bucket holds capacity events "in memory". However,
+          for a number of cases, you don't want this, as it might lead to
+          excessive memory consumption.  By setting cache_size to a
+          positive integer, we can control the maximum in-memory cache
+          size of the bucket, without changing its capacity and such. It
+          is useful when buckets are likely to stay alive for a long time
+          or ingest a lot of events to avoid storing a lot of events in
+          memory.
+      overflow_filter:
+        type: string
+        description: |
+          overflow_filter is an expression that is run when the bucket
+          overflows. If this expression is present and returns false, the
+          overflow will be discarded.
+      cancel_on:
+        type: string
+        description: |
+          cancel_on is an expression that runs on each event poured to the
+          bucket. If the cancel_on expression returns true, the bucket is
+          immediately destroyed (and doesn't overflow).
+      data:
+        $ref: "#/$defs/data"
+      scope:
+        type: object
+        description: |
+          While most scenarios might focus on IP addresses, CrowdSec and Bouncers can work with any scope. The scope directive allows you to override the default scope :
+              type is a string representing the scope name
+              expression is an expr expression that will be evaluated to fetch the value
+        properties:
+          type:
+            type: string
+          expression:
+            type: string
+        additionalProperties: false
+    additionalProperties: false  
+    required:
+      - type
+      - name
+      - leakspeed
+      - description
+      - condition          
+  data:
+    type: array
+    description: |
+      data allows user to specify an external source of data. This
+      section is only relevant when cscli is used to install parser
+      from hub, as it will download the source_url and store it to
+      dest_file. When the parser is not installed from the hub,
+      CrowdSec won't download the URL, but the file must exist for the
+      parser to be loaded correctly.
+    items:
+      type: object
+      properties:
+        source_url:
+          type: string
+          description: |
+            url to download file from
+        dest_file:
+          type: string
+          description: |
+            destination to store the downloaded file to
+        type:
+          type: string
+          pattern: "^(string|regexp)$"
+          additionalProperties: false
+          description: |
+            The type is mandatory if you want to evaluate the data in
+            the file, and should be regex for valid (re2) regular
+            expression per line or string for string per line. The
+            regexps will be compiled, the strings will be loaded into
+            a list and both will be kept in memory. Without specifying
+            a type, the file will be downloaded and stored as file and
+            not in memory.
+    required:
+      - type
+      - dest_file
+    additionalProperties: false  

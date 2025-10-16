@@ -1,0 +1,8 @@
+name: mcp-appsec
+default_remediation: ban
+inband_rules:
+  # Keep the CrowdSec base config to ensure essential protections remain active.
+  - crowdsecurity/base-config
+  # The MCP tooling copies the user rule into the custom directory as current-rule.yaml
+  ## XXX FIXME : make this a variable :)
+  - __PLACEHOLDER_FOR_USER_RULE__
