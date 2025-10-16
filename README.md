@@ -50,7 +50,7 @@ uv sync
 
 ### Quick MCP client setup
 
-- Configure supported clients automatically with `uvx run --from crowdsec-local-mcp init <client>`, where `<client>` is one of `claude-desktop`, `chatgpt`, `vscode`, or `stdio`.
+- Configure supported clients automatically with `uvx run --from crowdsec-local-mcp init <client>`, where `<client>` is one of `claude-desktop`, `chatgpt`, `vscode`, or `stdio`. VSCode support requires the `code` CLI to be on your `PATH`.
 
 ### Logging
 
