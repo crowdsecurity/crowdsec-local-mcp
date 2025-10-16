@@ -1,8 +1,0 @@
-# Acquisition file registering the MCP-generated AppSec configuration.
-appsec_configs:
- - mcp-appsec
-labels:
-  type: appsec
-listen_addr: 0.0.0.0:7422
-source: appsec
-name: myAppSecComponent
