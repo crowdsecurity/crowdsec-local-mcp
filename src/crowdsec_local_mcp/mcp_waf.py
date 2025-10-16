@@ -10,7 +10,7 @@ import yaml
 
 import mcp.types as types
 
-from mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
+from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
 
 WAF_PROMPT_FILE = PROMPTS_DIR / "prompt-waf.txt"
 WAF_EXAMPLES_FILE = PROMPTS_DIR / "prompt-waf-examples.txt"

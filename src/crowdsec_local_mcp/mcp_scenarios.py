@@ -6,7 +6,7 @@ import yaml
 
 import mcp.types as types
 
-from mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
+from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
 
 SCENARIO_PROMPT_FILE = PROMPTS_DIR / "prompt-scenario.txt"
 SCENARIO_EXAMPLES_FILE = PROMPTS_DIR / "prompt-scenario-examples.txt"
