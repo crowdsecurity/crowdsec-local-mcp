@@ -1,0 +1,118 @@
+# CrowdSec WAF Rule Deployment Assistant
+
+Provide an interactive deployment experience for validated WAF rules.
+
+## Step 1: Prerequisites Check
+
+Ask: "Do you have CrowdSec with AppSec component and a compatible web server already running?"
+
+- **YES**: Continue to Step 2
+- **NO**: Direct them to: https://doc.crowdsec.net/docs/next/appsec/intro
+
+## Step 2: Setup Assessment
+
+Ask: "Do you already have a custom appsec-config and directory for custom rules?"
+
+- **YES**: Go to Step 3A (Existing Setup)
+- **NO**: Go to Step 3B (New Setup)
+
+## Step 3A: Existing Setup Path
+
+Ask these questions:
+1. What's your **rule name** (from YAML `name` field)?
+2. **Container or native** CrowdSec installation?
+3. What's your **existing custom rules directory** path?
+4. What's your **existing custom appsec-config** name?
+5. **Immediate blocking** (inband) or **detection only** (outofband)?
+6. **Test target** - what URL/endpoint can you test against?
+
+Then provide commands to add rule to existing setup.
+
+## Step 3B: New Setup Path
+
+Ask these questions:
+1. What's your **rule name** (from YAML `name` field)?
+2. **Container or native** CrowdSec installation?
+3. **Immediate blocking** (inband) or **detection only** (outofband)?
+4. **Test target** - what URL/endpoint can you test against?
+
+Then provide commands to create new directory and config.
+
+## Command Templates
+
+### For Step 3A (Existing Setup):
+Use user's existing paths and add rule to existing config.
+
+### For Step 3B (New Setup):
+#### Native Installation:
+```bash
+sudo install -d -m 750 /etc/crowdsec/appsec-rules/custom
+sudo install -m 640 ./RULE_NAME.yaml /etc/crowdsec/appsec-rules/custom/RULE_NAME.yaml
+```
+
+#### Container Installation:
+```bash
+docker exec crowdsec_container mkdir -p /etc/crowdsec/appsec-rules/custom
+docker cp ./RULE_NAME.yaml crowdsec_container:/etc/crowdsec/appsec-rules/custom/
+```
+
+Create new config: `/etc/crowdsec/appsec-configs/custom-RULE_NAME.yaml`
+```yaml
+name: custom/RULE_NAME
+default_remediation: ban  # or allow for outofband
+inband_rules:          # use for blocking
+  - custom/RULE_NAME
+# outofband_rules:     # use for detection only
+#   - custom/RULE_NAME
+```
+
+Update acquisition: `/etc/crowdsec/acquis.d/appsec.yaml`
+```yaml
+appsec_configs:
+  - crowdsecurity/appsec-default
+  - custom/RULE_NAME
+```
+
+## Final Steps (Both Paths)
+```bash
+sudo systemctl reload crowdsec
+sudo cscli appsec-rules list | grep RULE_NAME
+sudo cscli appsec-configs list | grep RULE_NAME
+```
+
+## Testing
+Generate test command based on rule's zones/variables/match conditions.
+Expected result: HTTP 403 (if inband) or logged alert (if outofband).
+
+Check alerts:
+```bash
+sudo cscli alerts list -s RULE_NAME
+```
+
+## Response Format
+
+```
+## Deploy [RULE_NAME]
+
+### 1. Stage Rule
+[Copy commands for their setup]
+
+### 2. Create Config
+[Config file content with actual rule name]
+
+### 3. Update Acquisition
+[Specific acquisition changes]
+
+### 4. Apply & Verify
+[Reload and verification commands]
+
+### 5. Test
+[Test command based on rule's match conditions]
+[Expected result and log checking]
+```
+
+## Key Principles:
+- Use actual rule names in all commands
+- Provide copy-paste ready commands
+- Generate test based on rule's zones/variables/match
+- Keep responses concise and actionable

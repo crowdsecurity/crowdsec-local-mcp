@@ -1,0 +1,237 @@
+### Example: SSH Bruteforce (crowdsecurity/ssh-bf)
+
+**Overview**
+Detects repeated failed SSH authentications from the same source IP and reacts quickly to shut down short, intense brute-force bursts.
+
+**Signals**
+- Log source: `ssh_failed-auth`
+- Grouping: `evt.Meta.source_ip`
+- Threshold: 5 failures leaking over 10 seconds, bans for 1 minute
+
+```yaml
+type: leaky
+name: crowdsecurity/ssh-bf
+description: "Detect ssh bruteforce"
+filter: evt.Meta.log_type == 'ssh_failed-auth'
+leakspeed: "10s"
+references:
+  - http://wikipedia.com/ssh-bf-is-bad
+capacity: 5
+groupby: evt.Meta.source_ip
+blackhole: 1m
+reprocess: true
+labels:
+  service: ssh
+  confidence: 3
+  spoofable: 0
+  classification:
+    - attack.T1110
+  label: "SSH Bruteforce"
+  behavior: "ssh:bruteforce"
+  remediation: true
+```
+
+**Notes**
+- Works with the stock `crowdsecurity/ssh` parser that emits `ssh_failed-auth` events.
+- `reprocess: true` allows earlier buckets to be reconsidered if new evidence arrives.
+
+### Example: WordPress Scan (crowdsecurity/http-wordpress-scan)
+
+**Overview**
+Flags HTTP clients enumerating vulnerable WordPress PHP endpoints, combining access and error logs to catch probing noise.
+
+**Signals**
+- Log source: `http_access-log` and `http_error-log`
+- Grouping: `evt.Meta.source_ip` with path distinctness
+- Threshold: 3 distinct PHP paths with `/wp-` prefix in 10 seconds
+
+```yaml
+type: leaky
+name: crowdsecurity/http-wordpress-scan
+description: "Detect exploitation attempts against common WordPress endpoints"
+filter: |
+  evt.Meta.service == 'http' and 
+  evt.Meta.log_type in ['http_access-log', 'http_error-log'] and 
+  evt.Meta.http_status in ['404', '403'] and
+  Lower(evt.Meta.http_path) contains "/wp-" and
+  Lower(evt.Meta.http_path) endsWith ".php"
+groupby: evt.Meta.source_ip
+distinct: evt.Meta.http_path
+capacity: 3
+leakspeed: "10s"
+blackhole: 5m
+labels:
+  remediation: true
+  classification:
+    - attack.T1595
+  behavior: "http:scan"
+  label: "WordPress Vuln Hunting"
+  spoofable: 0
+  service: wordpress
+  confidence: 3
+```
+
+**Notes**
+- Requires parsers that normalize HTTP status, verb, and path fields (e.g., `crowdsecurity/nginx`).
+- The `distinct` clause suppresses repeated hits on the same file while still tracking breadth.
+
+### Example: Kubernetes Pod Exec (crowdsecurity/k8s-audit-pod-exec)
+
+**Overview**
+Traces `kubectl exec` attempts captured by Kubernetes audit logs, highlighting possible lateral movement inside clusters.
+
+**Signals**
+- Log source: `k8s-audit`
+- Filter: matches `pods/exec` subresource across differing audit payload shapes
+- Action: trigger immediately for notification
+
+```yaml
+type: trigger
+name: crowdsecurity/k8s-audit-pod-exec
+description: "Detect execution (via kubectl exec) in pods"
+filter: |
+  evt.Meta.log_type == 'k8s-audit' &&
+  (
+   (evt.Meta.datasource_type == "k8s-audit" && evt.Unmarshaled.k8s_audit.ObjectRef?.Resource == 'pods' && evt.Unmarshaled.k8s_audit.ObjectRef?.Subresource == 'exec')
+   ||
+   (evt.Meta.datasource_type != "k8s-audit" && evt.Unmarshaled.k8s_audit.objectRef?.resource == 'pods' && evt.Unmarshaled.k8s_audit.objectRef?.subresource == 'exec')
+  )
+labels:
+  notification: true
+  classification:
+    - attack.T1609
+  behavior: "k8s:audit"
+  label: "Kubernetes Exec Into Pod"
+  spoofable: 0
+  confidence: 3
+  cti: false
+  service: k8s
+```
+
+**Notes**
+- Handles both legacy and new audit formats via optional chaining syntax.
+- Set up alert routing for `notification: true` events rather than automated bans.
+
+### Example: HTTP Open Proxy Probe (crowdsecurity/http-open-proxy)
+
+**Overview**
+Spots scanners testing whether your HTTP service relays outbound requests via the CONNECT method or full URLs.
+
+**Signals**
+- Log source: `http_access-log`
+- Grouping: `evt.Meta.source_ip`
+- Threshold: instant trigger with `400`/`405` status and suspicious request line
+
+```yaml
+type: trigger
+name: crowdsecurity/http-open-proxy
+description: "Detect scan for open proxy"
+#apache returns 405, nginx 400
+filter: "evt.Meta.log_type == 'http_access-log' && evt.Meta.http_status in ['400','405'] && (evt.Parsed.verb == 'CONNECT' || evt.Parsed.request matches '^http[s]?://')"
+blackhole: 2m
+groupby: evt.Meta.source_ip
+labels:
+  service: http
+  type: scan
+  remediation: true
+  classification:
+    - attack.T1595
+  behavior: "http:scan"
+  label: "HTTP Open Proxy Probing"
+  spoofable: 0
+  confidence: 3
+```
+
+**Notes**
+- Combine with rate-limiting scenarios (e.g., leaky buckets) for persistent scanners.
+- Retains a short `blackhole` so subsequent hits from the same IP reuse the bucket without re-triggering immediately.
+
+### Example: Log4Shell CVE-2021-44228 (crowdsecurity/apache_log4j2_cve-2021-44228)
+
+**Overview**
+Captures Log4Shell payloads embedded anywhere in HTTP requests by matching against an updated signature list fetched from CrowdSec hub data.
+
+**Signals**
+- Log source: `http_access-log` and `http_error-log`
+- Grouping: `evt.Meta.source_ip`
+- External data: downloads `log4j2_cve_2021_44228.txt` with known exploit markers
+
+```yaml
+type: trigger
+format: 2.0
+name: crowdsecurity/apache_log4j2_cve-2021-44228
+description: "Detect cve-2021-44228 exploitation attemps"
+filter: |
+  evt.Meta.log_type in ["http_access-log", "http_error-log"] and 
+  (
+    any(File("log4j2_cve_2021_44228.txt"), { Upper(evt.Meta.http_path) contains Upper(#)})
+  or
+    any(File("log4j2_cve_2021_44228.txt"), { Upper(evt.Parsed.http_user_agent) contains Upper(#)})
+  or
+    any(File("log4j2_cve_2021_44228.txt"), { Upper(evt.Parsed.http_referer) contains Upper(#)})  
+  )
+data:
+  - source_url: https://hub-data.crowdsec.net/web/log4j2_cve_2021_44228.txt
+    dest_file: log4j2_cve_2021_44228.txt
+    type: string
+groupby: "evt.Meta.source_ip"
+blackhole: 2m
+labels:
+  service: apache
+  confidence: 3
+  spoofable: 0
+  classification:
+    - attack.T1595
+    - attack.T1190
+    - cve.CVE-2021-44228
+  behavior: "http:exploit"
+  label: "Log4j CVE-2021-44228"
+  remediation: true
+```
+
+**Notes**
+- The `data` block keeps the exploit keyword list current without redeploying the scenario.
+- Checks multiple headers and path fields to cover obfuscated payload placements.
+
+### Example: ThinkPHP CVE-2018-20062 (crowdsecurity/thinkphp-cve-2018-20062)
+
+**Overview**
+Monitors for ThinkPHP remote code execution probes by matching request paths against a curated regex list refreshed on the fly.
+
+**Signals**
+- Log source: `http_access-log` and `http_error-log`
+- Grouping: `evt.Meta.source_ip`
+- External data: LRU-cached regex file `thinkphp_cve_2018-20062.txt` with a 10-second TTL
+
+```yaml
+type: trigger
+format: 2.0
+name: crowdsecurity/thinkphp-cve-2018-20062
+description: "Detect ThinkPHP CVE-2018-20062 exploitation attemps"
+filter: |
+  evt.Meta.log_type in ["http_access-log", "http_error-log"] and RegexpInFile(Lower(evt.Meta.http_path), "thinkphp_cve_2018-20062.txt")
+data:
+  - source_url: https://hub-data.crowdsec.net/web/thinkphp_cve_2018-20062.txt
+    dest_file: thinkphp_cve_2018-20062.txt
+    type: regexp
+    strategy: LRU
+    size: 20
+    ttl: 10s
+groupby: "evt.Meta.source_ip"
+blackhole: 2m
+labels:
+  confidence: 3
+  spoofable: 0
+  classification:
+    - attack.T1190
+    - attack.T1595
+    - cve.CVE-2018-20062
+  behavior: "http:exploit"
+  label: "ThinkPHP CVE-2018-20062"
+  remediation: true
+  service: thinkphp
+```
+
+**Notes**
+- `RegexpInFile` leverages the downloaded expressions, which are refreshed using an LRU cache for performance.
+- Tight `ttl` ensures your defender stays aligned with the latest offensive payload variants.

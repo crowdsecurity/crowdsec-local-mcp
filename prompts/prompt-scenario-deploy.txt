@@ -1,0 +1,27 @@
+### CrowdSec Scenario Deployment Helper
+
+Use this checklist to package, publish, and roll out a new CrowdSec scenario safely.
+
+**Preflight**
+- Confirm the scenario YAML validates against the official schema.
+- Ensure associated parsers, collections, and data files are already published or bundled.
+- Document expected labels (`service`, `behavior`, `classification`) for downstream consumers.
+
+**Local Packaging**
+- Create or update a collection under `hub/collections/` with your scenario in `scenarios/`.
+- Run `cscli lint` on the collection to verify metadata, dependency graph, and manifest.
+- Execute `cscli hubtest run <collection>` or tailored replay tests before shipping.
+
+**Versioning & Metadata**
+- Bump the collection `version` and add a concise changelog entry.
+- Update `description`, `author`, and `tags` to reflect the new detection surface.
+- Include `references` or `data` source URLs when external threat intel is consumed.
+
+**Distribution**
+- For private rollouts: publish to an internal mirror via `cscli hub push --url <repo>`.
+- For community sharing: open a PR against the public CrowdSec hub with scenario, collection, and documentation updates.
+- Communicate migration guidance (e.g., new labels, breaking filter changes) to operators.
+
+**Post-Deployment**
+- Monitor `cscli decisions list` and alerting channels for noise or missed detections.
+- Gather feedback and iterate quickly; update the scenario or collection version as needed.

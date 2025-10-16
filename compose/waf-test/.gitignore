@@ -1,0 +1,3 @@
+# Generated at runtime by the MCP integration.
+rules/current-rule.yaml
+crowdsec/appsec-configs/mcp-appsec.yaml
