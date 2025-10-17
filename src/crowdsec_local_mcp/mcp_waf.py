@@ -15,6 +15,7 @@ from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
 WAF_PROMPT_FILE = PROMPTS_DIR / "prompt-waf.txt"
 WAF_EXAMPLES_FILE = PROMPTS_DIR / "prompt-waf-examples.txt"
 WAF_DEPLOY_FILE = PROMPTS_DIR / "prompt-waf-deploy.txt"
+WAF_TESTS_PROMPT_FILE = PROMPTS_DIR / "prompt-waf-tests.txt"
 
 CROWDSEC_SCHEMAS_DIR = SCRIPT_DIR / "yaml-schemas"
 WAF_SCHEMA_FILE = CROWDSEC_SCHEMAS_DIR / "appsec_rules_schema.yaml"
@@ -653,6 +654,57 @@ def _tool_generate_waf_rule(arguments: Optional[Dict[str, Any]]) -> List[types.T
         ]
 
 
+def _tool_generate_waf_tests(arguments: Optional[Dict[str, Any]]) -> List[types.TextContent]:
+    try:
+        tests_prompt = WAF_TESTS_PROMPT_FILE.read_text(encoding="utf-8")
+        nuclei_template = arguments.get("nuclei_template") if arguments else None
+        rule_filename = arguments.get("rule_filename") if arguments else None
+
+        LOGGER.info(
+            "Generating WAF test prompt (nuclei_template_present=%s, rule_filename_present=%s)",
+            bool(nuclei_template),
+            bool(rule_filename),
+        )
+
+        combined_prompt = tests_prompt
+
+        if rule_filename:
+            combined_prompt += (
+                "\n\n### Rule Under Test\n"
+                f"The detection rule produced earlier is stored at: {rule_filename}\n"
+                "Use this exact path in the config.yaml `appsec-rules` list."
+            )
+
+        if nuclei_template:
+            combined_prompt += (
+                "\n\n### Input Nuclei Template to Adapt:\n"
+                f"```yaml\n{nuclei_template}\n```"
+            )
+
+        return [
+            types.TextContent(
+                type="text",
+                text=combined_prompt,
+            )
+        ]
+    except FileNotFoundError as exc:
+        LOGGER.error("WAF test prompt missing: %s", exc)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Error: WAF test prompt file not found: {str(exc)}",
+            )
+        ]
+    except Exception as exc:
+        LOGGER.error("Unexpected error generating WAF test prompt: %s", exc)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Error generating WAF test prompt: {str(exc)}",
+            )
+        ]
+
+
 def _tool_validate_waf_rule(arguments: Optional[Dict[str, Any]]) -> List[types.TextContent]:
     if not arguments or "rule_yaml" not in arguments:
         LOGGER.warning("Validation request missing 'rule_yaml' argument")
@@ -988,6 +1040,7 @@ WAF_TOOL_HANDLERS: Dict[str, ToolHandler] = {
     "get_waf_prompt": _tool_get_waf_prompt,
     "get_waf_examples": _tool_get_waf_examples,
     "generate_waf_rule": _tool_generate_waf_rule,
+    "generate_waf_tests": _tool_generate_waf_tests,
     "validate_waf_rule": _tool_validate_waf_rule,
     "lint_waf_rule": _tool_lint_waf_rule,
     "deploy_waf_rule": _tool_deploy_waf_rule,
@@ -1025,6 +1078,24 @@ WAF_TOOLS: List[types.Tool] = [
                     "type": "string",
                     "description": "Optional Nuclei template to include in the prompt for immediate processing",
                 }
+            },
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="generate_waf_tests",
+        description="Get the WAF test generation prompt for producing config.yaml and adapted Nuclei templates",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "nuclei_template": {
+                    "type": "string",
+                    "description": "Optional Nuclei template to include so the assistant can adapt it for testing",
+                },
+                "rule_filename": {
+                    "type": "string",
+                    "description": "Optional path to the generated rule (e.g. ./appsec-rules/crowdsecurity/vpatch-CVE-XXXX-YYYY.yaml)",
+                },
             },
             "additionalProperties": False,
         },
@@ -1158,12 +1229,19 @@ WAF_RESOURCES: List[types.Resource] = [
         description="Step-by-step guide for deploying CrowdSec WAF rules",
         mimeType="text/plain",
     ),
+    types.Resource(
+        uri="file://prompts/prompt-waf-tests.txt",
+        name="WAF Test Generation Prompt",
+        description="Instructions for producing config.yaml and adapted Nuclei templates for WAF testing",
+        mimeType="text/plain",
+    ),
 ]
 
 WAF_RESOURCE_READERS: Dict[str, Callable[[], str]] = {
     "file://prompts/prompt-waf.txt": lambda: WAF_PROMPT_FILE.read_text(encoding="utf-8"),
     "file://prompts/prompt-waf-examples.txt": lambda: WAF_EXAMPLES_FILE.read_text(encoding="utf-8"),
     "file://prompts/prompt-waf-deploy.txt": lambda: WAF_DEPLOY_FILE.read_text(encoding="utf-8"),
+    "file://prompts/prompt-waf-tests.txt": lambda: WAF_TESTS_PROMPT_FILE.read_text(encoding="utf-8"),
 }
 
 REGISTRY.register_tools(WAF_TOOL_HANDLERS, WAF_TOOLS)
