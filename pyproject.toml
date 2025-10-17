@@ -4,11 +4,33 @@ dynamic = ["version"]
 description = "An MCP exposing prompts and tools to help users write WAF rules, scenarios etc."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+]
+
 dependencies = [
     "jsonschema>=4.25.1",
     "mcp>=1.15.0",
     "pyyaml>=6.0.3",
     "requests>=2.32.5",
+]
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.25.0",
+    "ruff>=0.9.3",
+    "types-pyyaml>=6.0.12.20241230",
+    "types-requests>=2.32.0.20241016",
 ]
 
 [project.scripts]
@@ -32,3 +54,84 @@ where = ["src"]
 tag_regex = "^v?(?P<version>[0-9]+(\\.[0-9]+)*)$"
 version_scheme = "no-guess-dev"
 local_scheme = "no-local-version"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 193
+#fix = true
+#unsafe-fixes = false
+#extend-select = ["I", "UP"]  # import sorting, modern syntax upgrades
+
+[tool.ruff.format]
+#quote-style = "double"
+#indent-style = "space"
+#skip-magic-trailing-comma = false
+#line-ending = "lf"
+
+[tool.ruff.lint.per-file-ignores]
+#"path/to/file.py" = [
+#    "T201",     # `print` found
+#]
+
+[tool.ruff.lint]
+select = [
+  "ALL"
+]
+
+ignore = [
+    "ANN",      # Missing type annotations
+    "BLE001",   # Do not catch blind exception: `Exception`
+    "COM",      # flake8-commas
+    "D",        # pydocstyle
+    "EM101",    # Exception must not use a string literal, assign to variable first
+    "EM102",    # Exception must not use an f-string literal, assign to variable first
+    "EXE001",   # Shebang is present but file is not executable
+    "F401",     # `...` imported but unused
+    "FBT001",   # Boolean-typed positional argument in function definition
+    "FBT002",   # Boolean default positional argument in function definition
+    "FURB188",  # Prefer `str.removesuffix()` over conditionally replacing with slice.
+    "I001",     # Import block is un-sorted or un-formatted
+    "PERF401",  # Use `list.extend` to create a transformed list
+    "PLR0402",  # Use `...` in lieu of alias
+    "PLW0603",  # Using the global statement to update `...` is discouraged
+    "PLW1510",  # `subprocess.run` without explicit `check` argument
+    "RET505",   # Unnecessary `elif` after `return` statement
+    "RUF005",   # Consider `[...]` instead of concatenation
+    "RUF010",   # Use explicit conversion flag
+    "RUF100",   # Unused `noqa` directive (non-enabled: `F401`)
+    "S603",     # `subprocess` call: check for execution of untrusted input
+    "SIM102",   # Use a single `if` statement instead of nested `if` statements
+    "T201",     # `print` found
+    "TRY003",   # Avoid specifying long messages outside the exception class
+    "TRY004",   # Prefer `TypeError` exception for invalid type
+    "TRY301",   # Abstract `raise` to an inner function
+    "UP006",    # Use `dict` instead of `Dict` for type annotation
+    "UP035",    # `typing.Tuple` is deprecated, use `tuple` instead
+    "UP037",    # Remove quotes from type annotation
+    "UP045",    # Use `X | None` for type annotations
+]
+
+[tool.ruff.lint.pylint]
+max-statements = 75
+max-branches = 20
+max-returns = 12
+
+[tool.ruff.lint.mccabe]
+max-complexity = 33
+
+[tool.basedpyright]
+pythonVersion = "3.12"
+reportAny = "none"
+reportArgumentType = "none"
+reportConstantRedefinition = "none"
+reportDeprecated = "none"
+reportExplicitAny = "none"
+reportImplicitStringConcatenation = "none"
+reportMissingTypeArgument = "none"
+reportUnknownArgumentType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnnecessaryIsInstance = "none"
+reportUnusedCallResult = "none"
+reportUnusedImport = "none"
