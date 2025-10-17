@@ -54,7 +54,7 @@ services:
       - waf-net
 
   backend:
-    image: nginxdemos/hello:latest
+    image: nginx:alpine
     container_name: app-backend
     restart: unless-stopped
     networks:
