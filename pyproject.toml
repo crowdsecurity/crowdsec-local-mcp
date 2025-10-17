@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 crowdsec-mcp = "crowdsec_local_mcp.__main__:run"
+init = "crowdsec_local_mcp.setup_cli:main"
 
 [build-system]
 requires = ["setuptools>=69", "wheel"]

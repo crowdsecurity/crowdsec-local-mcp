@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# Use `uv run --project . <command>` to run this module directly for testing.
+
 import asyncio
 
 from .mcp_core import LOGGER, main

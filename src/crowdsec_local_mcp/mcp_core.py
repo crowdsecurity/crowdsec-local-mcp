@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import tempfile
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -11,7 +12,7 @@ from mcp.server.models import InitializationOptions
 
 SCRIPT_DIR = Path(__file__).parent
 PROMPTS_DIR = SCRIPT_DIR / "prompts"
-LOG_FILE_PATH = SCRIPT_DIR / "crowdsec-mcp.log"
+LOG_FILE_PATH = Path(tempfile.gettempdir()) / "crowdsec-mcp.log"
 
 
 def _configure_logger() -> logging.Logger:
