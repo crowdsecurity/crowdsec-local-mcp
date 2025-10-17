@@ -165,6 +165,12 @@ def _configure_vscode(args: CLIArgs, server_payload: Dict[str, object]) -> None:
             "and the `code` command is available on your PATH."
         )
 
+    env = os.environ.copy()
+    home = str(Path.home())
+    # scrub env that can break Node/Electron resolution
+    for k in ("NODE_OPTIONS", "NODE_PATH", "ELECTRON_RUN_AS_NODE"):
+        env.pop(k, None)
+        
     vscode_payload = {
         "name": SERVER_KEY,
         "command": server_payload["command"],
@@ -180,11 +186,35 @@ def _configure_vscode(args: CLIArgs, server_payload: Dict[str, object]) -> None:
         return
 
     try:
-        subprocess.run(command, check=True)
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=home,
+            env=env,
+        )
     except subprocess.CalledProcessError as exc:
+        stdout = exc.stdout.strip() if exc.stdout else ""
+        stderr = exc.stderr.strip() if exc.stderr else ""
+        details = []
+        if stdout:
+            details.append(f"stdout:\n{stdout}")
+        if stderr:
+            details.append(f"stderr:\n{stderr}")
+        detail_msg = "\n".join(details)
         raise RuntimeError(
-            f"Failed to register MCP server with VSCode (exit code {exc.returncode})."
+            "Failed to register MCP server with VSCode "
+            f"(exit code {exc.returncode})."
+            + (f"\n{detail_msg}" if detail_msg else "")
         ) from exc
+
+    if result.stdout:
+        print("`code --add-mcp` stdout:")
+        print(result.stdout.rstrip())
+    if result.stderr:
+        print("`code --add-mcp` stderr:")
+        print(result.stderr.rstrip(), file=sys.stderr)
 
     print("Registered CrowdSec MCP server with Visual Studio Code via `code --add-mcp`.")
 
