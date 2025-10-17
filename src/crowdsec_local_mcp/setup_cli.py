@@ -177,7 +177,16 @@ def _write_mcp_config(
     client_name: str,
     servers_key: str = "mcpServers",
 ) -> None:
-    config, existed = _load_json(config_path, allow_missing=True)
+    manual_snippet = json.dumps(
+        {servers_key: {SERVER_KEY: server_payload}}, indent=2
+    )
+    config, existed = _load_json(
+        config_path,
+        allow_missing=True,
+        fallback_snippet=manual_snippet,
+    )
+    if config is None:
+        return
     if not existed and not (args.force or args.dry_run):
         raise FileNotFoundError(
             f"{config_path} does not exist. Re-run with --force to create it "
@@ -209,13 +218,19 @@ def _print_stdio(server_payload: Dict[str, object]) -> None:
     if cwd is not None:
         snippet["cwd"] = cwd
 
+    snippet_json = json.dumps(snippet, indent=2)
     print(
         "Use the following configuration with stdio-compatible MCP clients:\n"
-        f"{json.dumps(snippet, indent=2)}"
+        f"{snippet_json}"
     )
 
 
-def _load_json(path: Path, *, allow_missing: bool) -> Tuple[Dict[str, object], bool]:
+def _load_json(
+    path: Path,
+    *,
+    allow_missing: bool,
+    fallback_snippet: Optional[str] = None,
+) -> Tuple[Optional[Dict[str, object]], bool]:
     if not path.exists():
         if allow_missing:
             return {}, False
@@ -228,7 +243,13 @@ def _load_json(path: Path, *, allow_missing: bool) -> Tuple[Dict[str, object], b
     try:
         return json.loads(content), True
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Failed to parse JSON from {path}: {exc}") from exc
+        manual_msg = (
+            f"Couldn't parse {path}: {exc}.\n"
+            "Edit it manually to add:\n\n"
+            f"{fallback_snippet or '<no snippet available>'}"
+        )
+        print(manual_msg)
+        return None, True
 
 
 def _resolve_path(explicit: Optional[Path], candidates: List[Path]) -> Path:
