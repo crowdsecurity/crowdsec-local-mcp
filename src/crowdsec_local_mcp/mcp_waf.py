@@ -1,4 +1,6 @@
+import json
 import subprocess
+import tempfile
 import time
 import urllib.parse
 from pathlib import Path
@@ -37,6 +39,9 @@ WAF_TEST_APPSEC_CONFIG = (
 )
 WAF_RULE_NAME_PLACEHOLDER = "__PLACEHOLDER_FOR_USER_RULE__"
 WAF_TEST_PROJECT_NAME = "crowdsec-mcp-waf"
+WAF_TEST_NETWORK_NAME = f"{WAF_TEST_PROJECT_NAME}_waf-net"
+WAF_DEFAULT_TARGET_URL = "http://nginx-appsec"
+WAF_DEFAULT_NUCLEI_IMAGE = "projectdiscovery/nuclei:latest"
 
 DEFAULT_EXPLOIT_REPOSITORIES = [
     "https://github.com/projectdiscovery/nuclei-templates.git",
@@ -216,6 +221,119 @@ def _wait_for_crowdsec_ready(timeout: int = 90) -> None:
 
     LOGGER.error("CrowdSec API did not become ready before timeout")
     raise RuntimeError("CrowdSec local API did not become ready in time")
+
+
+def _run_nuclei_container(
+    workspace: Path,
+    template_path: Path,
+    *,
+    nuclei_image: str,
+    target_url: str,
+    nuclei_args: Optional[List[str]] = None,
+    timeout: int = 180,
+) -> Tuple[bool, str]:
+    """Run the provided nuclei template inside a disposable docker container."""
+    rel_template = template_path.relative_to(workspace)
+    container_template_path = f"/nuclei/{rel_template.as_posix()}"
+
+    command = [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        WAF_TEST_NETWORK_NAME,
+        "-v",
+        f"{workspace}:/nuclei",
+        nuclei_image,
+        "-t",
+        container_template_path,
+        "-u",
+        target_url,
+        "-jsonl",
+        "-silent",
+    ]
+    if nuclei_args:
+        command.extend(str(arg) for arg in nuclei_args)
+
+    LOGGER.info("Executing nuclei container: %s", " ".join(command))
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        LOGGER.error("Docker binary not found while launching nuclei container")
+        return (False, f"Docker is required to run nuclei tests but was not found: {exc}")
+    except subprocess.TimeoutExpired:
+        LOGGER.error("Nuclei container timed out after %s seconds", timeout)
+        return (
+            False,
+            "Nuclei execution timed out. Consider simplifying the template or increasing the timeout.",
+        )
+
+    stdout = (result.stdout or "").strip()
+    stderr = (result.stderr or "").strip()
+    details: List[str] = []
+    if stdout:
+        details.append(f"stdout:\n{stdout}")
+    if stderr:
+        details.append(f"stderr:\n{stderr}")
+    detail_text = "\n\n".join(details)
+
+    if result.returncode != 0:
+        LOGGER.error("Nuclei container exited with code %s", result.returncode)
+        failure = (
+            f"Nuclei container exited with status {result.returncode}."
+            + (f"\n\n{detail_text}" if detail_text else "")
+        )
+        return (False, failure)
+
+    matches: List[Dict[str, Any]] = []
+    unmatched_lines: List[str] = []
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+            if isinstance(payload, dict):
+                matches.append(payload)
+            else:
+                unmatched_lines.append(line)
+        except json.JSONDecodeError:
+            unmatched_lines.append(line)
+
+    if not matches:
+        LOGGER.warning("Nuclei execution completed but no matches were reported")
+        info_lines = []
+        if unmatched_lines:
+            info_lines.append("Nuclei produced output but no matches were recorded:\n" + "\n".join(unmatched_lines))
+        else:
+            info_lines.append(
+                "Nuclei completed successfully but reported zero matches. "
+                "The WAF rule likely did not block the request (missing HTTP 403)."
+            )
+        if stderr:
+            info_lines.append(f"stderr:\n{stderr}")
+        return (False, "\n\n".join(info_lines))
+
+    summary_lines = [
+        f"Nuclei reported {len(matches)} match(es) using template {rel_template.name}.",
+    ]
+    for match in matches:
+        template_id = match.get("template-id") or match.get("templateID") or rel_template.stem
+        url = match.get("matched-at") or match.get("matchedAt") or target_url
+        summary_lines.append(f" - {template_id} matched at {url}")
+    if unmatched_lines:
+        summary_lines.append(
+            "Additional nuclei output:\n" + "\n".join(unmatched_lines)
+        )
+    if stderr:
+        summary_lines.append(f"stderr:\n{stderr}")
+    return (True, "\n".join(summary_lines))
 
 
 def _start_waf_test_stack(rule_yaml: str) -> Tuple[Optional[str], Optional[str]]:
@@ -833,6 +951,116 @@ def _tool_manage_waf_stack(arguments: Optional[Dict[str, Any]]) -> List[types.Te
         ]
 
 
+def _tool_run_waf_tests(arguments: Optional[Dict[str, Any]]) -> List[types.TextContent]:
+    stack_started_here = False
+    try:
+        if not arguments:
+            LOGGER.warning("run_waf_tests called without arguments")
+            raise ValueError("Missing arguments payload")
+
+        rule_yaml = arguments.get("rule_yaml")
+        nuclei_yaml = arguments.get("nuclei_yaml")
+
+        if not isinstance(rule_yaml, str) or not rule_yaml.strip():
+            raise ValueError("'rule_yaml' must be a non-empty string")
+        if not isinstance(nuclei_yaml, str) or not nuclei_yaml.strip():
+            raise ValueError("'nuclei_yaml' must be a non-empty string")
+
+        LOGGER.info(
+            "Starting WAF stack for nuclei test (image=%s, target_url=%s)",
+            WAF_DEFAULT_NUCLEI_IMAGE,
+            WAF_DEFAULT_TARGET_URL,
+        )
+
+        target_endpoint, stack_error = _start_waf_test_stack(rule_yaml)
+        if stack_error:
+            if "appears to be running already" in stack_error.lower():
+                LOGGER.info("Existing stack detected; attempting restart before running tests")
+                _stop_waf_test_stack()
+                target_endpoint, stack_error = _start_waf_test_stack(rule_yaml)
+            if stack_error:
+                LOGGER.error("Unable to start WAF stack: %s", stack_error)
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"❌ Unable to start WAF stack: {stack_error}",
+                    )
+                ]
+        stack_started_here = True
+
+        with tempfile.TemporaryDirectory(prefix="waf-test-") as temp_dir:
+            workspace = Path(temp_dir)
+
+            template_path = workspace / "nuclei-template.yaml"
+            template_path.parent.mkdir(parents=True, exist_ok=True)
+            template_path.write_text(nuclei_yaml, encoding="utf-8")
+
+            LOGGER.info(
+                "Running nuclei template against %s (image=%s)",
+                WAF_DEFAULT_TARGET_URL,
+                WAF_DEFAULT_NUCLEI_IMAGE,
+            )
+            success, message = _run_nuclei_container(
+                workspace,
+                template_path,
+                nuclei_image=WAF_DEFAULT_NUCLEI_IMAGE,
+                target_url=WAF_DEFAULT_TARGET_URL,
+            )
+
+        if not success:
+            stack_logs = _collect_compose_logs(["crowdsec", "nginx"])
+            parts = [
+                "❌ Nuclei test failed.",
+                "=== NUCLEI OUTPUT ===",
+                message,
+            ]
+            if stack_logs:
+                parts.append("=== STACK LOGS (crowdsec/nginx) ===")
+                parts.append(stack_logs)
+            joined = "\n\n".join(parts)
+            return [
+                types.TextContent(
+                    type="text",
+                    text=joined,
+                )
+            ]
+
+        success_sections = [
+            "✅ Nuclei test succeeded.",
+            f"Target endpoint inside the stack: {WAF_DEFAULT_TARGET_URL}",
+            f"Host accessible endpoint: {target_endpoint or 'unknown'}",
+            "=== NUCLEI OUTPUT ===",
+            message,
+        ]
+        stack_logs = _collect_compose_logs(["crowdsec", "nginx"])
+        if stack_logs:
+            success_sections.extend(
+                [
+                    "=== STACK LOGS (crowdsec/nginx) ===",
+                    stack_logs,
+                ]
+            )
+        return [
+            types.TextContent(
+                type="text",
+                text="\n\n".join(success_sections),
+            )
+        ]
+
+    except Exception as exc:
+        LOGGER.error("run_waf_tests error: %s", exc)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"❌ Test execution error: {str(exc)}",
+            )
+        ]
+    finally:
+        if stack_started_here:
+            try:
+                _stop_waf_test_stack()
+            except Exception as stop_exc:  # pragma: no cover - best effort cleanup
+                LOGGER.warning("Failed to stop WAF stack during cleanup: %s", stop_exc)
 def _search_repo_for_cve(repo_path: Path, cve: str) -> List[Path]:
     """Return files whose name contains the CVE identifier (case-insensitive)."""
     lower_token = cve.lower()
@@ -1046,6 +1274,7 @@ WAF_TOOL_HANDLERS: Dict[str, ToolHandler] = {
     "deploy_waf_rule": _tool_deploy_waf_rule,
     "fetch_nuclei_exploit": _tool_fetch_nuclei_exploit,
     "manage_waf_stack": _tool_manage_waf_stack,
+    "run_waf_tests": _tool_run_waf_tests,
     "curl_waf_endpoint": _tool_curl_waf_endpoint,
 }
 
@@ -1097,6 +1326,25 @@ WAF_TOOLS: List[types.Tool] = [
                     "description": "Optional path to the generated rule (e.g. ./appsec-rules/crowdsecurity/vpatch-CVE-XXXX-YYYY.yaml)",
                 },
             },
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="run_waf_tests",
+        description="Start the WAF harness and execute the provided nuclei test template against it",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "rule_yaml": {
+                    "type": "string",
+                    "description": "CrowdSec WAF rule YAML to load into the harness before running tests",
+                },
+                "nuclei_yaml": {
+                    "type": "string",
+                    "description": "Adapted nuclei template YAML that should trigger a block (HTTP 403)",
+                },
+            },
+            "required": ["rule_yaml", "nuclei_yaml"],
             "additionalProperties": False,
         },
     ),
