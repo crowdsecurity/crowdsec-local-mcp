@@ -2,9 +2,7 @@ import argparse
 import json
 import os
 import platform
-import shlex
 import shutil
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -152,71 +150,23 @@ def _configure_chatgpt(args: CLIArgs, server_payload: Dict[str, object]) -> None
 
 
 def _configure_vscode(args: CLIArgs, server_payload: Dict[str, object]) -> None:
-    if args.config_path:
-        print(
-            "Warning: --config-path is ignored for Visual Studio Code; "
-            "configuration is applied via the `code` CLI."
-        )
-
-    code_cli = shutil.which("code")
-    if not code_cli:
-        raise FileNotFoundError(
-            "Visual Studio Code CLI 'code' not found. Ensure VSCode is installed "
-            "and the `code` command is available on your PATH."
-        )
-
-    env = os.environ.copy()
-    home = str(Path.home())
-    # scrub env that can break Node/Electron resolution
-    for k in ("NODE_OPTIONS", "NODE_PATH", "ELECTRON_RUN_AS_NODE"):
-        env.pop(k, None)
-        
-    vscode_payload = {
-        "name": SERVER_KEY,
+    config_path = _resolve_path(args.config_path, _vscode_candidates())
+    vscode_payload: Dict[str, object] = {
         "command": server_payload["command"],
         "args": server_payload["args"],
     }
     if "cwd" in server_payload:
         vscode_payload["cwd"] = server_payload["cwd"]
-    command = [code_cli, "--add-mcp", json.dumps(vscode_payload)]
-
-    if args.dry_run:
-        printable = " ".join(shlex.quote(part) for part in command)
-        print(f"Dry run: {printable}")
-        return
-
-    try:
-        result = subprocess.run(
-            command,
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=home,
-            env=env,
-        )
-    except subprocess.CalledProcessError as exc:
-        stdout = exc.stdout.strip() if exc.stdout else ""
-        stderr = exc.stderr.strip() if exc.stderr else ""
-        details = []
-        if stdout:
-            details.append(f"stdout:\n{stdout}")
-        if stderr:
-            details.append(f"stderr:\n{stderr}")
-        detail_msg = "\n".join(details)
-        raise RuntimeError(
-            "Failed to register MCP server with VSCode "
-            f"(exit code {exc.returncode})."
-            + (f"\n{detail_msg}" if detail_msg else "")
-        ) from exc
-
-    if result.stdout:
-        print("`code --add-mcp` stdout:")
-        print(result.stdout.rstrip())
-    if result.stderr:
-        print("`code --add-mcp` stderr:")
-        print(result.stderr.rstrip(), file=sys.stderr)
-
-    print("Registered CrowdSec MCP server with Visual Studio Code via `code --add-mcp`.")
+    metadata = server_payload.get("metadata")
+    if isinstance(metadata, dict):
+        vscode_payload["metadata"] = metadata
+    _write_mcp_config(
+        config_path,
+        vscode_payload,
+        args,
+        client_name="Visual Studio Code",
+        servers_key="servers",
+    )
 
 
 def _write_mcp_config(
@@ -225,6 +175,7 @@ def _write_mcp_config(
     args: CLIArgs,
     *,
     client_name: str,
+    servers_key: str = "mcpServers",
 ) -> None:
     config, existed = _load_json(config_path, allow_missing=True)
     if not existed and not (args.force or args.dry_run):
@@ -232,11 +183,11 @@ def _write_mcp_config(
             f"{config_path} does not exist. Re-run with --force to create it "
             "or provide --config-path pointing to an existing configuration file."
         )
-    mcp_servers = config.setdefault("mcpServers", {})
-    if not isinstance(mcp_servers, dict):
-        raise ValueError(f"Expected 'mcpServers' to be an object in {config_path}")
+    server_collection = config.setdefault(servers_key, {})
+    if not isinstance(server_collection, dict):
+        raise ValueError(f"Expected '{servers_key}' to be an object in {config_path}")
 
-    mcp_servers[SERVER_KEY] = server_payload
+    server_collection[SERVER_KEY] = server_payload
 
     if args.dry_run:
         print(json.dumps(config, indent=2))
@@ -338,6 +289,18 @@ def _chatgpt_candidates() -> List[Path]:
         return [base / "ChatGPT" / "config.json"]
     return [Path.home() / ".config" / "ChatGPT" / "config.json"]
 
+
+def _vscode_candidates() -> List[Path]:
+    system = platform.system()
+    if system == "Windows":
+        base = Path(os.environ.get("APPDATA", Path.home()))
+        return [base / "Code" / "User" / "mcp.json", base / "Code - Insiders" / "User" / "mcp.json"]
+    elif system == "Darwin":
+        base = Path.home() / "Library" / "Application Support"
+        return [base / "Code" / "User" / "mcp.json", base / "Code - Insiders" / "User" / "mcp.json"]
+    else:  # Linux and others
+        base = Path.home() / ".config"
+        return [base / "Code" / "User" / "mcp.json", base / "Code - Insiders" / "User" / "mcp.json"]
 
 if __name__ == "__main__":
     main()
