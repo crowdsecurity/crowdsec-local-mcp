@@ -50,39 +50,15 @@ uv sync
 
 ### Quick MCP client setup
 
-- Configure supported clients automatically with `uvx run --from crowdsec-local-mcp init <client>`, where `<client>` is one of `claude-desktop`, `chatgpt`, `vscode`, or `stdio`. VSCode support requires the `code` CLI to be on your `PATH`.
+- Configure supported clients automatically with `uvx run --from crowdsec-local-mcp init <client>`, where `<client>` is one of `claude-desktop`, `chatgpt`, `vscode`, or `stdio`.
 
 ### Logging
 
 - The MCP server writes its log file to your operating system's temporary directory. On Linux/macOS this is typically `/tmp/crowdsec-mcp.log`; on Windows it resolves via `%TEMP%\crowdsec-mcp.log`.
-
-## Configuration for Claude Desktop
-
-### macOS/Linux
-
-1. Find your Claude Desktop config file:
-   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - Linux: `~/.config/Claude/claude_desktop_config.json`
-
-2. Add the MCP server configuration:
-```json
-{
-  "mcpServers": {
-    "crowdsec-prompt-server": {
-      "command": "/path/to/crowdsec-mcp-rule-helper/.venv/bin/python",
-      "args": [
-        "/path/to/crowdsec-mcp-rule-helper/mcp-prompt.py"
-      ],
-      "cwd": "/path/to/crowdsec-mcp-rule-helper"
-    }
-  }
-}
-```
-
-**Important**: Replace `/path/to/crowdsec-mcp-rule-helper` with the actual absolute path to your cloned repository.
 
 ## Pre Requisites
 
  - Docker + Docker Compose
 
  - Python
+
