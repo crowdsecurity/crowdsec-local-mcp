@@ -459,79 +459,46 @@ def _stop_waf_test_stack() -> None:
 def _validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
     """Validate that a CrowdSec WAF rule YAML conforms to the schema."""
     LOGGER.info("Validating WAF rule YAML (size=%s bytes)", len(rule_yaml.encode("utf-8")))
+    if not WAF_SCHEMA_FILE.exists():
+        LOGGER.error("Schema file missing at %s", WAF_SCHEMA_FILE)
+        raise FileNotFoundError(f"Schema file {WAF_SCHEMA_FILE} not found")
+
     try:
-        if not WAF_SCHEMA_FILE.exists():
-            LOGGER.error("Schema file missing at %s", WAF_SCHEMA_FILE)
-            return [
-                types.TextContent(
-                    type="text",
-                    text=f"❌ VALIDATION FAILED: Schema file {WAF_SCHEMA_FILE} not found",
-                )
-            ]
-
         schema = yaml.safe_load(WAF_SCHEMA_FILE.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        LOGGER.error("Failed to parse WAF schema YAML: %s", exc)
+        raise ValueError(f"Unable to parse WAF schema YAML: {exc!s}") from exc
+
+    try:
         parsed = yaml.safe_load(rule_yaml)
+    except yaml.YAMLError as exc:
+        LOGGER.error("YAML syntax error during validation: %s", exc)
+        raise ValueError(f"YAML syntax error: {exc!s}") from exc
 
-        if parsed is None:
-            LOGGER.warning("Validation request received empty YAML content")
-            return [
-                types.TextContent(
-                    type="text",
-                    text="❌ VALIDATION FAILED: Empty or invalid YAML content",
-                )
-            ]
+    if parsed is None:
+        LOGGER.warning("Validation request received empty YAML content")
+        raise ValueError("Empty or invalid YAML content")
 
-        if not isinstance(parsed, dict):
-            return [
-                types.TextContent(
-                    type="text",
-                    text="❌ VALIDATION FAILED: YAML must be a dictionary/object",
-                )
-            ]
+    if not isinstance(parsed, dict):
+        raise ValueError("YAML must be a dictionary/object")
 
+    try:
         jsonschema.validate(instance=parsed, schema=schema)
+    except jsonschema.ValidationError as exc:
+        error_path = " -> ".join(str(p) for p in exc.absolute_path) if exc.absolute_path else "root"
+        LOGGER.warning("Schema validation error at %s: %s", error_path, exc.message)
+        raise ValueError(f"Schema validation error at {error_path}: {exc.message}") from exc
+    except jsonschema.SchemaError as exc:
+        LOGGER.error("Invalid schema encountered: %s", exc)
+        raise RuntimeError(f"Invalid schema: {exc!s}") from exc
 
-        LOGGER.info("WAF rule validation passed")
-        return [
-            types.TextContent(
-                type="text",
-                text="✅ VALIDATION PASSED: Rule conforms to CrowdSec AppSec schema",
-            )
-        ]
-
-    except yaml.YAMLError as e:
-        LOGGER.error("YAML syntax error during validation: %s", e)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"❌ VALIDATION FAILED: YAML syntax error: {e!s}",
-            )
-        ]
-    except jsonschema.ValidationError as e:
-        error_path = " -> ".join(str(p) for p in e.absolute_path) if e.absolute_path else "root"
-        LOGGER.warning("Schema validation error at %s: %s", error_path, e.message)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"❌ VALIDATION FAILED: Schema validation error at {error_path}: {e.message}",
-            )
-        ]
-    except jsonschema.SchemaError as e:
-        LOGGER.error("Invalid schema encountered: %s", e)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"❌ VALIDATION FAILED: Invalid schema: {e!s}",
-            )
-        ]
-    except Exception as e:
-        LOGGER.error("Unexpected validation error: %s", e)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"❌ VALIDATION FAILED: Unexpected error: {e!s}",
-            )
-        ]
+    LOGGER.info("WAF rule validation passed")
+    return [
+        types.TextContent(
+            type="text",
+            text="✅ VALIDATION PASSED: Rule conforms to CrowdSec AppSec schema",
+        )
+    ]
 
 
 def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
@@ -539,140 +506,121 @@ def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
     LOGGER.info("Linting WAF rule YAML (size=%s bytes)", len(rule_yaml.encode("utf-8")))
     try:
         parsed = yaml.safe_load(rule_yaml)
+    except yaml.YAMLError as exc:
+        LOGGER.error("Lint failed due to YAML error: %s", exc)
+        raise ValueError(f"Cannot lint invalid YAML: {exc!s}") from exc
 
-        if parsed is None:
-            LOGGER.warning("Lint request failed: YAML content was empty or invalid")
-            return [
-                types.TextContent(
-                    type="text",
-                    text="❌ LINT ERROR: Cannot lint empty or invalid YAML",
+    if parsed is None:
+        LOGGER.warning("Lint request failed: YAML content was empty or invalid")
+        raise ValueError("Cannot lint empty or invalid YAML")
+
+    warnings: list[str] = []
+    hints: list[str] = []
+
+    if not isinstance(parsed, dict):
+        warnings.append("Rule should be a YAML dictionary")
+
+    if "name" not in parsed:
+        warnings.append("Missing 'name' field")
+
+    if "rules" not in parsed:
+        warnings.append("Missing 'rules' field")
+
+    if "labels" not in parsed:
+        warnings.append("Missing 'labels' field")
+
+    if "name" in parsed:
+        name = parsed.get("name", "")
+        if isinstance(name, str):
+            if name.startswith("crowdsecurity/"):
+                warnings.append(
+                    "Rule name starts with 'crowdsecurity/' which is reserved for official CrowdSec rules; consider using your own namespace"
                 )
-            ]
+        else:
+            warnings.append("Field 'name' should be a string")
 
-        warnings: list[str] = []
-        hints: list[str] = []
+    def check_rule_item(rule_item: Any, rule_path: str = "") -> None:
+        """Recursively check rule items for case sensitivity issues."""
+        if not isinstance(rule_item, dict):
+            return
 
-        if not isinstance(parsed, dict):
-            warnings.append("Rule should be a YAML dictionary")
+        if "and" in rule_item:
+            for i, sub_rule in enumerate(rule_item["and"]):
+                check_rule_item(sub_rule, f"{rule_path}.and[{i}]")
+        elif "or" in rule_item:
+            for i, sub_rule in enumerate(rule_item["or"]):
+                check_rule_item(sub_rule, f"{rule_path}.or[{i}]")
+        elif "match" in rule_item:
+            match = rule_item["match"]
+            if isinstance(match, dict):
+                match_type = match.get("type", "")
+                match_value = match.get("value", "")
 
-        if "name" not in parsed:
-            warnings.append("Missing 'name' field")
-
-        if "rules" not in parsed:
-            warnings.append("Missing 'rules' field")
-
-        if "labels" not in parsed:
-            warnings.append("Missing 'labels' field")
-
-        if "name" in parsed:
-            name = parsed.get("name", "")
-            if isinstance(name, str):
-                if name.startswith("crowdsecurity/"):
-                    warnings.append(
-                        "Rule name starts with 'crowdsecurity/' which is reserved for official CrowdSec rules; consider using your own namespace"
+                if (
+                    match_type in CASE_SENSITIVE_MATCH_TYPES
+                    and isinstance(match_value, str)
+                    and any(c.isupper() for c in match_value)
+                ):
+                    transforms = rule_item.get("transform", [])
+                    has_lowercase = (
+                        "lowercase" in transforms if isinstance(transforms, list) else False
                     )
-            else:
-                warnings.append("Field 'name' should be a string")
 
-        def check_rule_item(rule_item: Any, rule_path: str = "") -> None:
-            """Recursively check rule items for case sensitivity issues."""
-            if not isinstance(rule_item, dict):
-                return
-
-            if "and" in rule_item:
-                for i, sub_rule in enumerate(rule_item["and"]):
-                    check_rule_item(sub_rule, f"{rule_path}.and[{i}]")
-            elif "or" in rule_item:
-                for i, sub_rule in enumerate(rule_item["or"]):
-                    check_rule_item(sub_rule, f"{rule_path}.or[{i}]")
-            elif "match" in rule_item:
-                match = rule_item["match"]
-                if isinstance(match, dict):
-                    match_type = match.get("type", "")
-                    match_value = match.get("value", "")
-
-                    if (
-                        match_type in CASE_SENSITIVE_MATCH_TYPES
-                        and isinstance(match_value, str)
-                        and any(c.isupper() for c in match_value)
-                    ):
-                        transforms = rule_item.get("transform", [])
-                        has_lowercase = (
-                            "lowercase" in transforms if isinstance(transforms, list) else False
+                    if not has_lowercase:
+                        location = f"rules{rule_path}" if rule_path else "rules"
+                        warnings.append(
+                            f"Match at {location} uses '{match_type}' with uppercase letters "
+                            f"but no 'lowercase' transform - consider adding lowercase transform for case-insensitive matching"
                         )
 
-                        if not has_lowercase:
+                if isinstance(match_value, str):
+                    lower_value = match_value.lower()
+                    sql_keywords = [kw for kw in SQL_KEYWORD_INDICATORS if kw in lower_value]
+                    if sql_keywords:
+                        location = f"rules{rule_path}" if rule_path else "rules"
+                        keywords_str = ", ".join(sorted(set(sql_keywords)))
+                        warnings.append(
+                            f"Match at {location} contains SQL keyword(s) ({keywords_str}); instead of keyword blacklisting, detect escaping characters like quotes or semicolons"
+                        )
+
+                    transforms = rule_item.get("transform", [])
+                    if isinstance(transforms, list) and "urldecode" in transforms:
+                        if "%" in match_value:
                             location = f"rules{rule_path}" if rule_path else "rules"
                             warnings.append(
-                                f"Match at {location} uses '{match_type}' with uppercase letters "
-                                f"but no 'lowercase' transform - consider adding lowercase transform for case-insensitive matching"
+                                f"Match at {location} applies 'urldecode' but still contains percent-encoded characters; ensure the value is properly decoded or add another urldecode pass."
                             )
 
-                    if isinstance(match_value, str):
-                        lower_value = match_value.lower()
-                        sql_keywords = [kw for kw in SQL_KEYWORD_INDICATORS if kw in lower_value]
-                        if sql_keywords:
-                            location = f"rules{rule_path}" if rule_path else "rules"
-                            keywords_str = ", ".join(sorted(set(sql_keywords)))
-                            warnings.append(
-                                f"Match at {location} contains SQL keyword(s) ({keywords_str}); instead of keyword blacklisting, detect escaping characters like quotes or semicolons"
-                            )
+    if "rules" in parsed and isinstance(parsed["rules"], list):
+        for i, rule in enumerate(parsed["rules"]):
+            check_rule_item(rule, f"[{i}]")
 
-                        transforms = rule_item.get("transform", [])
-                        if isinstance(transforms, list) and "urldecode" in transforms:
-                            if "%" in match_value:
-                                location = f"rules{rule_path}" if rule_path else "rules"
-                                warnings.append(
-                                    f"Match at {location} applies 'urldecode' but still contains percent-encoded characters; ensure the value is properly decoded or add another urldecode pass."
-                                )
+    result_lines: list[str] = []
 
-        if "rules" in parsed and isinstance(parsed["rules"], list):
-            for i, rule in enumerate(parsed["rules"]):
-                check_rule_item(rule, f"[{i}]")
+    if not warnings and not hints:
+        result_lines.append("✅ LINT PASSED: No issues found")
+        LOGGER.info("Lint completed with no findings")
+    else:
+        if warnings:
+            result_lines.append("⚠️  WARNINGS:")
+            for warning in warnings:
+                result_lines.append(f"  - {warning}")
+            LOGGER.warning("Lint completed with %s warning(s)", len(warnings))
 
-        result_lines: list[str] = []
-
-        if not warnings and not hints:
-            result_lines.append("✅ LINT PASSED: No issues found")
-            LOGGER.info("Lint completed with no findings")
-        else:
+        if hints:
             if warnings:
-                result_lines.append("⚠️  WARNINGS:")
-                for warning in warnings:
-                    result_lines.append(f"  - {warning}")
-                LOGGER.warning("Lint completed with %s warning(s)", len(warnings))
+                result_lines.append("")
+            result_lines.append("💡 HINTS:")
+            for hint in hints:
+                result_lines.append(f"  - {hint}")
+            LOGGER.info("Lint completed with %s hint(s)", len(hints))
 
-            if hints:
-                if warnings:
-                    result_lines.append("")
-                result_lines.append("💡 HINTS:")
-                for hint in hints:
-                    result_lines.append(f"  - {hint}")
-                LOGGER.info("Lint completed with %s hint(s)", len(hints))
-
-        return [
-            types.TextContent(
-                type="text",
-                text="\n".join(result_lines),
-            )
-        ]
-
-    except yaml.YAMLError as e:
-        LOGGER.error("Lint failed due to YAML error: %s", e)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"❌ LINT ERROR: Cannot lint invalid YAML: {e!s}",
-            )
-        ]
-    except Exception as e:
-        LOGGER.error("Unexpected lint error: %s", e)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"❌ LINT ERROR: Unexpected error: {e!s}",
-            )
-        ]
+    return [
+        types.TextContent(
+            type="text",
+            text="\n".join(result_lines),
+        )
+    ]
 
 
 def _tool_get_waf_prompt(_: dict[str, Any] | None) -> list[types.TextContent]:
@@ -685,22 +633,12 @@ def _tool_get_waf_prompt(_: dict[str, Any] | None) -> list[types.TextContent]:
                 text=prompt_content,
             )
         ]
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         LOGGER.error("WAF prompt file not found at %s", WAF_PROMPT_FILE)
-        return [
-            types.TextContent(
-                type="text",
-                text="Error: WAF prompt file not found.",
-            )
-        ]
+        raise FileNotFoundError(f"WAF prompt file not found at {WAF_PROMPT_FILE}") from exc
     except Exception as exc:
         LOGGER.error("Error loading WAF prompt: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"Error reading WAF prompt file: {exc!s}",
-            )
-        ]
+        raise RuntimeError(f"Error reading WAF prompt file: {exc!s}") from exc
 
 
 def _tool_get_waf_examples(_: dict[str, Any] | None) -> list[types.TextContent]:
@@ -713,22 +651,12 @@ def _tool_get_waf_examples(_: dict[str, Any] | None) -> list[types.TextContent]:
                 text=examples_content,
             )
         ]
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         LOGGER.error("WAF examples file not found at %s", WAF_EXAMPLES_FILE)
-        return [
-            types.TextContent(
-                type="text",
-                text="Error: WAF examples file not found.",
-            )
-        ]
+        raise FileNotFoundError(f"WAF examples file not found at {WAF_EXAMPLES_FILE}") from exc
     except Exception as exc:
         LOGGER.error("Error loading WAF examples: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"Error reading WAF examples file: {exc!s}",
-            )
-        ]
+        raise RuntimeError(f"Error reading WAF examples file: {exc!s}") from exc
 
 
 def _tool_generate_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextContent]:
@@ -757,20 +685,10 @@ def _tool_generate_waf_rule(arguments: dict[str, Any] | None) -> list[types.Text
         ]
     except FileNotFoundError as exc:
         LOGGER.error("Prompt generation failed due to missing file: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"Error: Prompt file not found: {exc!s}",
-            )
-        ]
+        raise FileNotFoundError(f"Prompt file not found: {exc!s}") from exc
     except Exception as exc:
         LOGGER.error("Unexpected error generating WAF prompt: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"Error generating WAF rule prompt: {exc!s}",
-            )
-        ]
+        raise RuntimeError(f"Error generating WAF rule prompt: {exc!s}") from exc
 
 
 def _tool_generate_waf_tests(arguments: dict[str, Any] | None) -> list[types.TextContent]:
@@ -808,33 +726,21 @@ def _tool_generate_waf_tests(arguments: dict[str, Any] | None) -> list[types.Tex
         ]
     except FileNotFoundError as exc:
         LOGGER.error("WAF test prompt missing: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"Error: WAF test prompt file not found: {exc!s}",
-            )
-        ]
+        raise FileNotFoundError(f"WAF test prompt file not found: {exc!s}") from exc
     except Exception as exc:
         LOGGER.error("Unexpected error generating WAF test prompt: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"Error generating WAF test prompt: {exc!s}",
-            )
-        ]
+        raise RuntimeError(f"Error generating WAF test prompt: {exc!s}") from exc
 
 
 def _tool_validate_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     if not arguments or "rule_yaml" not in arguments:
         LOGGER.warning("Validation request missing 'rule_yaml' argument")
-        return [
-            types.TextContent(
-                type="text",
-                text="Error: rule_yaml parameter is required",
-            )
-        ]
+        raise ValueError("rule_yaml parameter is required")
 
     rule_yaml = arguments["rule_yaml"]
+    if not isinstance(rule_yaml, str):
+        raise TypeError("rule_yaml must be provided as a string")
+
     LOGGER.info("Received validation request for WAF rule")
     return _validate_waf_rule(rule_yaml)
 
@@ -842,14 +748,12 @@ def _tool_validate_waf_rule(arguments: dict[str, Any] | None) -> list[types.Text
 def _tool_lint_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     if not arguments or "rule_yaml" not in arguments:
         LOGGER.warning("Lint request missing 'rule_yaml' argument")
-        return [
-            types.TextContent(
-                type="text",
-                text="Error: rule_yaml parameter is required",
-            )
-        ]
+        raise ValueError("rule_yaml parameter is required")
 
     rule_yaml = arguments["rule_yaml"]
+    if not isinstance(rule_yaml, str):
+        raise TypeError("rule_yaml must be provided as a string")
+
     LOGGER.info("Received lint request for WAF rule")
     return _lint_waf_rule(rule_yaml)
 
@@ -864,22 +768,12 @@ def _tool_deploy_waf_rule(_: dict[str, Any] | None) -> list[types.TextContent]:
                 text=deploy_content,
             )
         ]
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         LOGGER.error("WAF deployment guide missing at %s", WAF_DEPLOY_FILE)
-        return [
-            types.TextContent(
-                type="text",
-                text="Error: WAF deployment guide file not found.",
-            )
-        ]
+        raise FileNotFoundError(f"WAF deployment guide file not found at {WAF_DEPLOY_FILE}") from exc
     except Exception as exc:
         LOGGER.error("Error loading WAF deployment guide: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"Error reading WAF deployment guide: {exc!s}"
-            )
-        ]
+        raise RuntimeError(f"Error reading WAF deployment guide: {exc!s}") from exc
 
 
 def _tool_manage_waf_stack(arguments: dict[str, Any] | None) -> list[types.TextContent]:
@@ -903,23 +797,13 @@ def _tool_manage_waf_stack(arguments: dict[str, Any] | None) -> list[types.TextC
             target_url, error_message = _start_waf_test_stack(rule_yaml)
             if error_message:
                 LOGGER.error("Failed to start WAF stack: %s", error_message)
-                return [
-                    types.TextContent(
-                        type="text",
-                        text=f"❌ WAF stack start error: {error_message}",
-                    )
-                ]
+                raise RuntimeError(f"WAF stack start error: {error_message}")
 
             if not target_url:
                 LOGGER.error("WAF stack start returned no target URL and no explicit error")
-                return [
-                    types.TextContent(
-                        type="text",
-                        text=(
-                            "❌ WAF stack start error: stack did not return a service URL but also did not report a specific error."
-                        ),
-                    )
-                ]
+                raise RuntimeError(
+                    "WAF stack start error: stack did not return a service URL and reported no specific error."
+                )
 
             return [
                 types.TextContent(
@@ -943,13 +827,8 @@ def _tool_manage_waf_stack(arguments: dict[str, Any] | None) -> list[types.TextC
         ]
 
     except Exception as exc:
-        LOGGER.error("manage_waf_stack error: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"❌ Stack management error: {exc!s}",
-            )
-        ]
+        LOGGER.error("manage_waf_stack error: %s", exc, exc_info=True)
+        raise
 
 
 def _tool_run_waf_tests(arguments: dict[str, Any] | None) -> list[types.TextContent]:
@@ -981,12 +860,7 @@ def _tool_run_waf_tests(arguments: dict[str, Any] | None) -> list[types.TextCont
                 target_endpoint, stack_error = _start_waf_test_stack(rule_yaml)
             if stack_error:
                 LOGGER.error("Unable to start WAF stack: %s", stack_error)
-                return [
-                    types.TextContent(
-                        type="text",
-                        text=f"❌ Unable to start WAF stack: {stack_error}",
-                    )
-                ]
+                raise RuntimeError(f"Unable to start WAF stack: {stack_error}")
         stack_started_here = True
 
         with tempfile.TemporaryDirectory(prefix="waf-test-") as temp_dir:
@@ -1019,12 +893,7 @@ def _tool_run_waf_tests(arguments: dict[str, Any] | None) -> list[types.TextCont
                 parts.append("=== STACK LOGS (crowdsec/nginx) ===")
                 parts.append(stack_logs)
             joined = "\n\n".join(parts)
-            return [
-                types.TextContent(
-                    type="text",
-                    text=joined,
-                )
-            ]
+            raise RuntimeError(joined)
 
         success_sections = [
             "✅ Nuclei test succeeded.",
@@ -1049,13 +918,8 @@ def _tool_run_waf_tests(arguments: dict[str, Any] | None) -> list[types.TextCont
         ]
 
     except Exception as exc:
-        LOGGER.error("run_waf_tests error: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"❌ Test execution error: {exc!s}",
-            )
-        ]
+        LOGGER.error("run_waf_tests error: %s", exc, exc_info=True)
+        raise
     finally:
         if stack_started_here:
             try:
@@ -1180,13 +1044,8 @@ def _tool_fetch_nuclei_exploit(arguments: dict[str, Any] | None) -> list[types.T
         ]
 
     except Exception as exc:
-        LOGGER.error("fetch_nuclei_exploit error: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"❌ fetch nuclei exploit error: {exc!s}",
-            )
-        ]
+        LOGGER.error("fetch_nuclei_exploit error: %s", exc, exc_info=True)
+        raise
 
 
 def _tool_curl_waf_endpoint(arguments: dict[str, Any] | None) -> list[types.TextContent]:
@@ -1257,13 +1116,8 @@ def _tool_curl_waf_endpoint(arguments: dict[str, Any] | None) -> list[types.Text
         ]
 
     except Exception as exc:
-        LOGGER.error("curl_waf_endpoint error: %s", exc)
-        return [
-            types.TextContent(
-                type="text",
-                text=f"❌ curl error: {exc!s}",
-            )
-        ]
+        LOGGER.error("curl_waf_endpoint error: %s", exc, exc_info=True)
+        raise
 
 
 WAF_TOOL_HANDLERS: dict[str, ToolHandler] = {
