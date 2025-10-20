@@ -2,7 +2,8 @@ import subprocess
 import time
 import urllib.parse
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
+from collections.abc import Callable
 
 import jsonschema
 import requests

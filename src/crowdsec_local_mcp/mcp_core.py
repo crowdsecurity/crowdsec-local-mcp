@@ -2,7 +2,8 @@ import logging
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
+from collections.abc import Callable
 
 import mcp.server.stdio
 import mcp.types as types

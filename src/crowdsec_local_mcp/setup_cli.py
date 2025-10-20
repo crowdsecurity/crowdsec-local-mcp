@@ -6,7 +6,8 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
+from collections.abc import Iterable
 
 SERVER_KEY = "crowdsec-local-mcp"
 SERVER_LABEL = "CrowdSec MCP"
