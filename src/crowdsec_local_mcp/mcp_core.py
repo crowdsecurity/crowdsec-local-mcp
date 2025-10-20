@@ -2,7 +2,7 @@ import logging
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Optional
 
 import mcp.server.stdio
 import mcp.types as types
@@ -36,7 +36,7 @@ def _configure_logger() -> logging.Logger:
 LOGGER = _configure_logger()
 server = Server("crowdsec-prompt-server")
 
-ToolHandler = Callable[[Optional[Dict[str, Any]]], List[types.TextContent]]
+ToolHandler = Callable[[Optional[dict[str, Any]]], list[types.TextContent]]
 ResourceReader = Callable[[], str]
 
 
@@ -44,15 +44,15 @@ class MCPRegistry:
     """Central registry for tool and resource integrations."""
 
     def __init__(self) -> None:
-        self._tool_handlers: Dict[str, ToolHandler] = {}
+        self._tool_handlers: dict[str, ToolHandler] = {}
         self._tools: "OrderedDict[str, types.Tool]" = OrderedDict()
         self._resources: "OrderedDict[str, types.Resource]" = OrderedDict()
-        self._resource_readers: Dict[str, ResourceReader] = {}
+        self._resource_readers: dict[str, ResourceReader] = {}
 
     def register_tools(
         self,
-        handlers: Dict[str, ToolHandler],
-        tool_definitions: List[types.Tool],
+        handlers: dict[str, ToolHandler],
+        tool_definitions: list[types.Tool],
     ) -> None:
         for name, handler in handlers.items():
             if name in self._tool_handlers:
@@ -66,8 +66,8 @@ class MCPRegistry:
 
     def register_resources(
         self,
-        resources: List[types.Resource],
-        readers: Dict[str, ResourceReader],
+        resources: list[types.Resource],
+        readers: dict[str, ResourceReader],
     ) -> None:
         for resource in resources:
             if resource.uri in self._resources:
@@ -80,11 +80,11 @@ class MCPRegistry:
             self._resource_readers[uri] = reader
 
     @property
-    def tools(self) -> List[types.Tool]:
+    def tools(self) -> list[types.Tool]:
         return list(self._tools.values())
 
     @property
-    def resources(self) -> List[types.Resource]:
+    def resources(self) -> list[types.Resource]:
         return list(self._resources.values())
 
     def get_tool_handler(self, name: str) -> ToolHandler:
@@ -104,22 +104,22 @@ REGISTRY = MCPRegistry()
 
 
 @server.list_tools()
-async def handle_list_tools() -> List[types.Tool]:
+async def handle_list_tools() -> list[types.Tool]:
     LOGGER.info("Listing available tools")
     return REGISTRY.tools
 
 
 @server.call_tool()
 async def handle_call_tool(
-    name: str, arguments: Optional[Dict[str, Any]]
-) -> List[types.TextContent]:
+    name: str, arguments: Optional[dict[str, Any]]
+) -> list[types.TextContent]:
     LOGGER.info("handle_call_tool invoked for tool '%s'", name)
     handler = REGISTRY.get_tool_handler(name)
     return handler(arguments)
 
 
 @server.list_resources()
-async def handle_list_resources() -> List[types.Resource]:
+async def handle_list_resources() -> list[types.Resource]:
     LOGGER.info("Listing available resources")
     return REGISTRY.resources
 

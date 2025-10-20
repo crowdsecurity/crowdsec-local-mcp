@@ -6,7 +6,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Iterable, Optional
 
 SERVER_KEY = "crowdsec-local-mcp"
 SERVER_LABEL = "CrowdSec MCP"
@@ -105,7 +105,7 @@ def _parse_args(argv: Optional[Iterable[str]]) -> CLIArgs:
     )
 
 
-def _resolve_runner(command_override: Optional[str]) -> Tuple[str, List[str]]:
+def _resolve_runner(command_override: Optional[str]) -> tuple[str, list[str]]:
     if command_override:
         command_parts = command_override.strip().split()
         if not command_parts:
@@ -129,7 +129,7 @@ def _resolve_runner(command_override: Optional[str]) -> Tuple[str, List[str]]:
     return python_executable, ["-m", "crowdsec_local_mcp"]
 
 
-def _configure_claude(args: CLIArgs, server_payload: Dict[str, object]) -> None:
+def _configure_claude(args: CLIArgs, server_payload: dict[str, object]) -> None:
     config_path = _resolve_path(args.config_path, _claude_candidates())
     _write_mcp_config(
         config_path,
@@ -139,7 +139,7 @@ def _configure_claude(args: CLIArgs, server_payload: Dict[str, object]) -> None:
     )
 
 
-def _configure_chatgpt(args: CLIArgs, server_payload: Dict[str, object]) -> None:
+def _configure_chatgpt(args: CLIArgs, server_payload: dict[str, object]) -> None:
     config_path = _resolve_path(args.config_path, _chatgpt_candidates())
     _write_mcp_config(
         config_path,
@@ -149,9 +149,9 @@ def _configure_chatgpt(args: CLIArgs, server_payload: Dict[str, object]) -> None
     )
 
 
-def _configure_vscode(args: CLIArgs, server_payload: Dict[str, object]) -> None:
+def _configure_vscode(args: CLIArgs, server_payload: dict[str, object]) -> None:
     config_path = _resolve_path(args.config_path, _vscode_candidates())
-    vscode_payload: Dict[str, object] = {
+    vscode_payload: dict[str, object] = {
         "command": server_payload["command"],
         "args": server_payload["args"],
     }
@@ -171,7 +171,7 @@ def _configure_vscode(args: CLIArgs, server_payload: Dict[str, object]) -> None:
 
 def _write_mcp_config(
     config_path: Path,
-    server_payload: Dict[str, object],
+    server_payload: dict[str, object],
     args: CLIArgs,
     *,
     client_name: str,
@@ -208,7 +208,7 @@ def _write_mcp_config(
     print(f"Configured {client_name} at {config_path}")
 
 
-def _print_stdio(server_payload: Dict[str, object]) -> None:
+def _print_stdio(server_payload: dict[str, object]) -> None:
     snippet = {
         "server": SERVER_KEY,
         "command": server_payload["command"],
@@ -230,7 +230,7 @@ def _load_json(
     *,
     allow_missing: bool,
     fallback_snippet: Optional[str] = None,
-) -> Tuple[Optional[Dict[str, object]], bool]:
+) -> tuple[Optional[dict[str, object]], bool]:
     if not path.exists():
         if allow_missing:
             return {}, False
@@ -252,7 +252,7 @@ def _load_json(
         return None, True
 
 
-def _resolve_path(explicit: Optional[Path], candidates: List[Path]) -> Path:
+def _resolve_path(explicit: Optional[Path], candidates: list[Path]) -> Path:
     if explicit:
         return explicit.expanduser()
 
@@ -279,7 +279,7 @@ def _backup_file_if_exists(path: Path) -> None:
     print(f"Existing configuration backed up to {backup_path}")
 
 
-def _claude_candidates() -> List[Path]:
+def _claude_candidates() -> list[Path]:
     system = platform.system()
     if system == "Darwin":
         return [
@@ -295,7 +295,7 @@ def _claude_candidates() -> List[Path]:
     return [Path.home() / ".config" / "Claude" / "claude_desktop_config.json"]
 
 
-def _chatgpt_candidates() -> List[Path]:
+def _chatgpt_candidates() -> list[Path]:
     system = platform.system()
     if system == "Darwin":
         return [
@@ -311,7 +311,7 @@ def _chatgpt_candidates() -> List[Path]:
     return [Path.home() / ".config" / "ChatGPT" / "config.json"]
 
 
-def _vscode_candidates() -> List[Path]:
+def _vscode_candidates() -> list[Path]:
     system = platform.system()
     if system == "Windows":
         base = Path(os.environ.get("APPDATA", Path.home()))

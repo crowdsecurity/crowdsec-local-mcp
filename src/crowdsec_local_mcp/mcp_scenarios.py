@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Optional
 
 import jsonschema
 import yaml
@@ -16,14 +16,14 @@ SCENARIO_DEPLOY_PROMPT_FILE = PROMPTS_DIR / "prompt-scenario-deploy.txt"
 REQUIRED_SCENARIO_FIELDS = ["name", "description", "type"]
 EXPECTED_TYPE_VALUES = {"leaky", "trigger", "counter", "conditional", "bayesian"}
 RECOMMENDED_FIELDS = ["filter", "groupby", "leakspeed", "capacity", "labels"]
-_SCENARIO_SCHEMA_CACHE: Optional[Dict[str, Any]] = None
+_SCENARIO_SCHEMA_CACHE: Optional[dict[str, Any]] = None
 
 
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _load_scenario_schema() -> Dict[str, Any]:
+def _load_scenario_schema() -> dict[str, Any]:
     global _SCENARIO_SCHEMA_CACHE
     if _SCENARIO_SCHEMA_CACHE is not None:
         return _SCENARIO_SCHEMA_CACHE
@@ -39,7 +39,7 @@ def _load_scenario_schema() -> Dict[str, Any]:
     return schema
 
 
-def _tool_get_scenario_prompt(_: Optional[Dict[str, Any]]) -> List[types.TextContent]:
+def _tool_get_scenario_prompt(_: Optional[dict[str, Any]]) -> list[types.TextContent]:
     try:
         LOGGER.info("Serving scenario authoring prompt content")
         return [
@@ -66,7 +66,7 @@ def _tool_get_scenario_prompt(_: Optional[Dict[str, Any]]) -> List[types.TextCon
         ]
 
 
-def _tool_get_scenario_examples(_: Optional[Dict[str, Any]]) -> List[types.TextContent]:
+def _tool_get_scenario_examples(_: Optional[dict[str, Any]]) -> list[types.TextContent]:
     try:
         LOGGER.info("Serving scenario example bundle")
         return [
@@ -93,7 +93,7 @@ def _tool_get_scenario_examples(_: Optional[Dict[str, Any]]) -> List[types.TextC
         ]
 
 
-def _validate_scenario_yaml(raw_yaml: str) -> Dict[str, Any]:
+def _validate_scenario_yaml(raw_yaml: str) -> dict[str, Any]:
     """Return parsed scenario YAML or raise ValueError on validation failure."""
     try:
         parsed = yaml.safe_load(raw_yaml)
@@ -142,7 +142,7 @@ def _validate_scenario_yaml(raw_yaml: str) -> Dict[str, Any]:
     return parsed
 
 
-def _tool_validate_scenario(arguments: Optional[Dict[str, Any]]) -> List[types.TextContent]:
+def _tool_validate_scenario(arguments: Optional[dict[str, Any]]) -> list[types.TextContent]:
     if not arguments or "scenario_yaml" not in arguments:
         LOGGER.warning("Scenario validation requested without 'scenario_yaml'")
         return [
@@ -172,7 +172,7 @@ def _tool_validate_scenario(arguments: Optional[Dict[str, Any]]) -> List[types.T
         ]
 
 
-def _tool_lint_scenario(arguments: Optional[Dict[str, Any]]) -> List[types.TextContent]:
+def _tool_lint_scenario(arguments: Optional[dict[str, Any]]) -> list[types.TextContent]:
     if not arguments or "scenario_yaml" not in arguments:
         LOGGER.warning("Scenario lint requested without 'scenario_yaml'")
         return [
@@ -195,8 +195,8 @@ def _tool_lint_scenario(arguments: Optional[Dict[str, Any]]) -> List[types.TextC
             )
         ]
 
-    warnings: List[str] = []
-    hints: List[str] = []
+    warnings: list[str] = []
+    hints: list[str] = []
 
     scenario_type = parsed.get("type")
     if isinstance(scenario_type, str) and scenario_type not in EXPECTED_TYPE_VALUES:
@@ -229,7 +229,7 @@ def _tool_lint_scenario(arguments: Optional[Dict[str, Any]]) -> List[types.TextC
                     f"Provide values for label(s): {', '.join(missing_values)} for better observability."
                 )
 
-    result_lines: List[str] = []
+    result_lines: list[str] = []
 
     if warnings:
         result_lines.append("⚠️  WARNINGS:")
@@ -254,7 +254,7 @@ def _tool_lint_scenario(arguments: Optional[Dict[str, Any]]) -> List[types.TextC
     ]
 
 
-def _tool_deploy_scenario(_: Optional[Dict[str, Any]]) -> List[types.TextContent]:
+def _tool_deploy_scenario(_: Optional[dict[str, Any]]) -> list[types.TextContent]:
     LOGGER.info("Serving scenario deployment helper prompt")
     try:
         return [
@@ -281,7 +281,7 @@ def _tool_deploy_scenario(_: Optional[Dict[str, Any]]) -> List[types.TextContent
         ]
 
 
-SCENARIO_TOOL_HANDLERS: Dict[str, ToolHandler] = {
+SCENARIO_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "get_scenario_prompt": _tool_get_scenario_prompt,
     "get_scenario_examples": _tool_get_scenario_examples,
     "validate_scenario_yaml": _tool_validate_scenario,
@@ -289,7 +289,7 @@ SCENARIO_TOOL_HANDLERS: Dict[str, ToolHandler] = {
     "deploy_scenario": _tool_deploy_scenario,
 }
 
-SCENARIO_TOOLS: List[types.Tool] = [
+SCENARIO_TOOLS: list[types.Tool] = [
     types.Tool(
         name="get_scenario_prompt",
         description="Retrieve the base prompt for authoring CrowdSec scenarios",
@@ -349,7 +349,7 @@ SCENARIO_TOOLS: List[types.Tool] = [
     ),
 ]
 
-SCENARIO_RESOURCES: List[types.Resource] = [
+SCENARIO_RESOURCES: list[types.Resource] = [
     types.Resource(
         uri="file://prompts/prompt-scenario.txt",
         name="Scenario Authoring Prompt",
@@ -370,7 +370,7 @@ SCENARIO_RESOURCES: List[types.Resource] = [
     ),
 ]
 
-SCENARIO_RESOURCE_READERS: Dict[str, Callable[[], str]] = {
+SCENARIO_RESOURCE_READERS: dict[str, Callable[[], str]] = {
     "file://prompts/prompt-scenario.txt": lambda: _read_text(SCENARIO_PROMPT_FILE),
     "file://prompts/prompt-scenario-examples.txt": lambda: _read_text(SCENARIO_EXAMPLES_FILE),
     "file://prompts/prompt-scenario-deploy.txt": lambda: _read_text(SCENARIO_DEPLOY_PROMPT_FILE),
