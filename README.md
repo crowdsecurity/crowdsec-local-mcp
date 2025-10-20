@@ -39,6 +39,12 @@
  - XX
  - XX
 
+## Prerequisites
+
+- Python 3.12 or newer (the MCP server is packaged and tested with 3.12).
+- [uv](https://docs.astral.sh/uv/) 0.4 or newer, which provides the `uvx` runner used in the examples below.
+- Docker with the Compose plugin (Compose v2). The WAF test harness spins up multiple containers and requires a functioning Docker environment.
+
 ## Installation
 
 ### Quick MCP client setup
@@ -46,16 +52,27 @@
 - Configure supported clients automatically with `uvx --from crowdsec-local-mcp init <client>`, where `<client>` is one of `claude-desktop`, `chatgpt`, `vscode`, or `stdio`:
 
 ```bash
-uvx --from crowdsec-local-mcp init
+uvx --from crowdsec-local-mcp init claude-desktop
 ```
+
+Run `uvx --from crowdsec-local-mcp init --help` to see all flags and supported targets.
+
+#### What `init` configures
+
+The `init` helper writes the CrowdSec MCP server definition into the client’s JSON configuration:
+
+- `claude-desktop` → `claude_desktop_config.json`
+- `chatgpt` → `config.json` in the ChatGPT Desktop settings directory
+- `vscode` → `mcp.json` for VS Code (stable and insiders are both detected)
+
+If the configuration file already exists, a `.bak` backup is created before the MCP server block is updated. When the file is missing you can either pass `--force` to create it, or point `--config-path` to a custom location. Combine `--dry-run` with these options to preview the JSON without making any changes.
+
+By default the CLI launches the server with `uvx --from crowdsec-local-mcp crowdsec-mcp`. If neither `uvx` nor `uv` is available, it falls back to your current Python interpreter; you can override the executable with `--command` and the working directory with `--cwd`.
+
+#### Using the `stdio` target
+
+`stdio` does not modify any files. Instead, `init stdio` prints a ready-to-paste JSON snippet that you can drop into any stdio-compatible MCP client configuration. This is useful when you want to manually wire the server into tools that do not have built-in automation support yet.
 
 ## Logging
 
 - The MCP server writes its log file to your operating system's temporary directory. On Linux/macOS this is typically `/tmp/crowdsec-mcp.log`; on Windows it resolves via `%TEMP%\crowdsec-mcp.log`.
-
-## Pre Requisites
-
- - Docker + Docker Compose
-
- - Python >= 3.12
-
