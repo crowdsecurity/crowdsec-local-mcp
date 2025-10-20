@@ -88,7 +88,6 @@ ignore = [
     "EXE001",   # Shebang is present but file is not executable
     "FBT001",   # Boolean-typed positional argument in function definition
     "FBT002",   # Boolean default positional argument in function definition
-    "FURB188",  # Prefer `str.removesuffix()` over conditionally replacing with slice.
     "I001",     # Import block is un-sorted or un-formatted
     "PERF401",  # Use `list.extend` to create a transformed list
     "PLW0603",  # Using the global statement to update `...` is discouraged

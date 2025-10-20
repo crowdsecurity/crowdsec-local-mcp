@@ -822,8 +822,7 @@ def _tool_fetch_nuclei_exploit(arguments: dict[str, Any] | None) -> list[types.T
         for repo_url in DEFAULT_EXPLOIT_REPOSITORIES:
             cleaned_url = repo_url.rstrip("/")
             repo_name = cleaned_url.split("/")[-1] or "repository"
-            if repo_name.endswith(".git"):
-                repo_name = repo_name[:-4]
+            repo_name = repo_name.removesuffix(".git")
             repo_path = target_path / repo_name
 
             if repo_path.exists():
