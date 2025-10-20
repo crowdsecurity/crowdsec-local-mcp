@@ -11,7 +11,7 @@ import jsonschema
 import requests
 import yaml
 
-import mcp.types as types
+from mcp import types
 
 from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
 
@@ -1104,7 +1104,7 @@ def _tool_fetch_nuclei_exploit(arguments: dict[str, Any] | None) -> list[types.T
             cleaned_url = repo_url.rstrip("/")
             repo_name = cleaned_url.split("/")[-1] or "repository"
             if repo_name.endswith(".git"):
-                repo_name = repo_name[:-4]
+                repo_name = repo_name.removesuffix(".git")
             repo_path = target_path / repo_name
 
             if repo_path.exists():
