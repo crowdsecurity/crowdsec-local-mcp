@@ -43,7 +43,7 @@
 
 ### Quick MCP client setup
 
-- Configure supported clients automatically with `uvx run --from crowdsec-local-mcp init <client>`, where `<client>` is one of `claude-desktop`, `chatgpt`, `vscode`, or `stdio`:
+- Configure supported clients automatically with `uvx --from crowdsec-local-mcp init <client>`, where `<client>` is one of `claude-desktop`, `chatgpt`, `vscode`, or `stdio`:
 
 ```bash
 uvx --from crowdsec-local-mcp init
