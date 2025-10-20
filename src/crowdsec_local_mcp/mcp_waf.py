@@ -11,7 +11,7 @@ import jsonschema
 import requests
 import yaml
 
-from mcp import types
+import mcp.types as types
 
 from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
 
@@ -504,7 +504,7 @@ def _validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
         return [
             types.TextContent(
                 type="text",
-                text=f"❌ VALIDATION FAILED: YAML syntax error: {e!s}",
+                text=f"❌ VALIDATION FAILED: YAML syntax error: {str(e)}",
             )
         ]
     except jsonschema.ValidationError as e:
@@ -521,7 +521,7 @@ def _validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
         return [
             types.TextContent(
                 type="text",
-                text=f"❌ VALIDATION FAILED: Invalid schema: {e!s}",
+                text=f"❌ VALIDATION FAILED: Invalid schema: {str(e)}",
             )
         ]
     except Exception as e:
@@ -529,7 +529,7 @@ def _validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
         return [
             types.TextContent(
                 type="text",
-                text=f"❌ VALIDATION FAILED: Unexpected error: {e!s}",
+                text=f"❌ VALIDATION FAILED: Unexpected error: {str(e)}",
             )
         ]
 
@@ -662,7 +662,7 @@ def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
         return [
             types.TextContent(
                 type="text",
-                text=f"❌ LINT ERROR: Cannot lint invalid YAML: {e!s}",
+                text=f"❌ LINT ERROR: Cannot lint invalid YAML: {str(e)}",
             )
         ]
     except Exception as e:
@@ -670,7 +670,7 @@ def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
         return [
             types.TextContent(
                 type="text",
-                text=f"❌ LINT ERROR: Unexpected error: {e!s}",
+                text=f"❌ LINT ERROR: Unexpected error: {str(e)}",
             )
         ]
 
@@ -698,7 +698,7 @@ def _tool_get_waf_prompt(_: dict[str, Any] | None) -> list[types.TextContent]:
         return [
             types.TextContent(
                 type="text",
-                text=f"Error reading WAF prompt file: {exc!s}",
+                text=f"Error reading WAF prompt file: {str(exc)}",
             )
         ]
 
@@ -726,7 +726,7 @@ def _tool_get_waf_examples(_: dict[str, Any] | None) -> list[types.TextContent]:
         return [
             types.TextContent(
                 type="text",
-                text=f"Error reading WAF examples file: {exc!s}",
+                text=f"Error reading WAF examples file: {str(exc)}",
             )
         ]
 
@@ -760,7 +760,7 @@ def _tool_generate_waf_rule(arguments: dict[str, Any] | None) -> list[types.Text
         return [
             types.TextContent(
                 type="text",
-                text=f"Error: Prompt file not found: {exc!s}",
+                text=f"Error: Prompt file not found: {str(exc)}",
             )
         ]
     except Exception as exc:
@@ -768,7 +768,7 @@ def _tool_generate_waf_rule(arguments: dict[str, Any] | None) -> list[types.Text
         return [
             types.TextContent(
                 type="text",
-                text=f"Error generating WAF rule prompt: {exc!s}",
+                text=f"Error generating WAF rule prompt: {str(exc)}",
             )
         ]
 
@@ -811,7 +811,7 @@ def _tool_generate_waf_tests(arguments: dict[str, Any] | None) -> list[types.Tex
         return [
             types.TextContent(
                 type="text",
-                text=f"Error: WAF test prompt file not found: {str(exc)}",
+                text=f"Error: WAF test prompt file not found: {exc!s}",
             )
         ]
     except Exception as exc:
@@ -819,7 +819,7 @@ def _tool_generate_waf_tests(arguments: dict[str, Any] | None) -> list[types.Tex
         return [
             types.TextContent(
                 type="text",
-                text=f"Error generating WAF test prompt: {str(exc)}",
+                text=f"Error generating WAF test prompt: {exc!s}",
             )
         ]
 
@@ -877,7 +877,7 @@ def _tool_deploy_waf_rule(_: dict[str, Any] | None) -> list[types.TextContent]:
         return [
             types.TextContent(
                 type="text",
-                text=f"Error reading WAF deployment guide: {exc!s}",
+                text=f"Error reading WAF deployment guide: {exc!s}"
             )
         ]
 
@@ -947,7 +947,7 @@ def _tool_manage_waf_stack(arguments: dict[str, Any] | None) -> list[types.TextC
         return [
             types.TextContent(
                 type="text",
-                text=f"❌ Stack management error: {exc!s}",
+                text=f"❌ Stack management error: {str(exc)}",
             )
         ]
 
@@ -1062,7 +1062,7 @@ def _tool_run_waf_tests(arguments: dict[str, Any] | None) -> list[types.TextCont
                 _stop_waf_test_stack()
             except Exception as stop_exc:  # pragma: no cover - best effort cleanup
                 LOGGER.warning("Failed to stop WAF stack during cleanup: %s", stop_exc)
-            
+
 def _search_repo_for_cve(repo_path: Path, cve: str) -> list[Path]:
     """Return files whose name contains the CVE identifier (case-insensitive)."""
     lower_token = cve.lower()
@@ -1103,7 +1103,8 @@ def _tool_fetch_nuclei_exploit(arguments: dict[str, Any] | None) -> list[types.T
         for repo_url in DEFAULT_EXPLOIT_REPOSITORIES:
             cleaned_url = repo_url.rstrip("/")
             repo_name = cleaned_url.split("/")[-1] or "repository"
-            repo_name = repo_name.removesuffix(".git")
+            if repo_name.endswith(".git"):
+                repo_name = repo_name[:-4]
             repo_path = target_path / repo_name
 
             if repo_path.exists():
@@ -1183,7 +1184,7 @@ def _tool_fetch_nuclei_exploit(arguments: dict[str, Any] | None) -> list[types.T
         return [
             types.TextContent(
                 type="text",
-                text=f"❌ fetch nuclei exploit error: {exc!s}",
+                text=f"❌ fetch nuclei exploit error: {str(exc)}",
             )
         ]
 
@@ -1260,7 +1261,7 @@ def _tool_curl_waf_endpoint(arguments: dict[str, Any] | None) -> list[types.Text
         return [
             types.TextContent(
                 type="text",
-                text=f"❌ curl error: {exc!s}",
+                text=f"❌ curl error: {str(exc)}",
             )
         ]
 
