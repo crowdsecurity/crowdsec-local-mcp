@@ -104,6 +104,7 @@ ignore = [
 max-statements = 75
 max-branches = 20
 max-returns = 12
+max-args = 10 #Marco <3
 
 [tool.ruff.lint.mccabe]
 max-complexity = 33
