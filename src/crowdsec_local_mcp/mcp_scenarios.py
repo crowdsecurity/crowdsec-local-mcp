@@ -5,7 +5,7 @@ from collections.abc import Callable
 import jsonschema
 import yaml
 
-import mcp.types as types
+from mcp import types
 
 from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
 
@@ -62,7 +62,7 @@ def _tool_get_scenario_prompt(_: dict[str, Any] | None) -> list[types.TextConten
         return [
             types.TextContent(
                 type="text",
-                text=f"Error reading scenario prompt: {str(exc)}",
+                text=f"Error reading scenario prompt: {exc!s}",
             )
         ]
 
@@ -89,7 +89,7 @@ def _tool_get_scenario_examples(_: dict[str, Any] | None) -> list[types.TextCont
         return [
             types.TextContent(
                 type="text",
-                text=f"Error reading scenario examples: {str(exc)}",
+                text=f"Error reading scenario examples: {exc!s}",
             )
         ]
 
@@ -168,7 +168,7 @@ def _tool_validate_scenario(arguments: dict[str, Any] | None) -> list[types.Text
         return [
             types.TextContent(
                 type="text",
-                text=f"❌ VALIDATION FAILED: {str(exc)}",
+                text=f"❌ VALIDATION FAILED: {exc!s}",
             )
         ]
 
@@ -192,7 +192,7 @@ def _tool_lint_scenario(arguments: dict[str, Any] | None) -> list[types.TextCont
         return [
             types.TextContent(
                 type="text",
-                text=f"❌ LINT ERROR: {str(exc)}",
+                text=f"❌ LINT ERROR: {exc!s}",
             )
         ]
 
@@ -277,7 +277,7 @@ def _tool_deploy_scenario(_: dict[str, Any] | None) -> list[types.TextContent]:
         return [
             types.TextContent(
                 type="text",
-                text=f"Error reading scenario deployment prompt: {str(exc)}",
+                text=f"Error reading scenario deployment prompt: {exc!s}",
             )
         ]
 

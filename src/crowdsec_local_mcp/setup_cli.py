@@ -316,12 +316,12 @@ def _vscode_candidates() -> list[Path]:
     if system == "Windows":
         base = Path(os.environ.get("APPDATA", Path.home()))
         return [base / "Code" / "User" / "mcp.json", base / "Code - Insiders" / "User" / "mcp.json"]
-    elif system == "Darwin":
+    if system == "Darwin":
         base = Path.home() / "Library" / "Application Support"
         return [base / "Code" / "User" / "mcp.json", base / "Code - Insiders" / "User" / "mcp.json"]
-    else:  # Linux and others
-        base = Path.home() / ".config"
-        return [base / "Code" / "User" / "mcp.json", base / "Code - Insiders" / "User" / "mcp.json"]
+    # Linux and others
+    base = Path.home() / ".config"
+    return [base / "Code" / "User" / "mcp.json", base / "Code - Insiders" / "User" / "mcp.json"]
 
 if __name__ == "__main__":
     main()

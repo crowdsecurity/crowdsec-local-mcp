@@ -85,18 +85,13 @@ ignore = [
     "D",        # pydocstyle
     "EM101",    # Exception must not use a string literal, assign to variable first
     "EM102",    # Exception must not use an f-string literal, assign to variable first
-    "EXE001",   # Shebang is present but file is not executable
     "FBT001",   # Boolean-typed positional argument in function definition
     "FBT002",   # Boolean default positional argument in function definition
-    "FURB188",  # Prefer `str.removesuffix()` over conditionally replacing with slice.
     "I001",     # Import block is un-sorted or un-formatted
     "PERF401",  # Use `list.extend` to create a transformed list
-    "PLR0402",  # Use `...` in lieu of alias
     "PLW0603",  # Using the global statement to update `...` is discouraged
     "PLW1510",  # `subprocess.run` without explicit `check` argument
-    "RET505",   # Unnecessary `elif` after `return` statement
     "RUF005",   # Consider `[...]` instead of concatenation
-    "RUF010",   # Use explicit conversion flag
     "S603",     # `subprocess` call: check for execution of untrusted input
     "SIM102",   # Use a single `if` statement instead of nested `if` statements
     "T201",     # `print` found
