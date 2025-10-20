@@ -1,0 +1,18 @@
+services:
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    hostname: crowdsec
+    container_name: crowdsec-scenario-test
+    restart: "no"
+    environment:
+      - DISABLE_ONLINE_API=true
+      - DISABLE_AGENT=true
+    volumes:
+      # Persist CrowdSec data (buckets, alerts, etc.) between restarts.
+      - crowdsec-data:/var/lib/crowdsec/data
+      # No need for acquisition
+      # The MCP tooling will drop the user-provided rule in this folder as current-rule.yaml
+      - ./scenarios:/etc/crowdsec/scenarios/custom
+
+volumes:
+  crowdsec-data:

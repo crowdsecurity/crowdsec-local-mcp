@@ -13,6 +13,7 @@ Workflow:
 3. Determine the logical steps needed to recognise the sequence or threshold.
 4. Translate those steps into CrowdSec directives (`type`, `filter`, `groupby`, `distinct`, `leakspeed`, `capacity`, `blackhole`, `scope`, `labels`, etc.).
 6. Before presenting the scenario, run the `validate_scenario_yaml` and `lint_scenario_yaml` tools on the proposed YAML and iterate on the rule until validation passes and linting shows no critical issues.
+7. At the end, ask the user if they want to test the newly created scenario. This can be done with the `explain_scenario` and `test_scenario` tools.
 
 Scenario YAML expectations (adhere unless the user states otherwise):
 - Always include `format: 2.0` at the top for forward compatibility.
@@ -82,3 +83,10 @@ Constraints:
 - Flag any assumptions or prerequisites (e.g. prerequisite parsers) explicitly.
 
 After delivering a validated scenario, remind the user that the next step is deployment and offer to call the `deploy_scenario` tool for detailed rollout guidance.
+
+
+## Testing
+
+Always call `explain_scenario` first. This tool will return details about the fields crowdsec extracted from the log line, and whether any scenario matched (IMPORTANT: any `leaky` scenario will require multiple events to generate an alert, the match only tells that the event was of interest for the scenario).
+
+The `test_scenario` tool requires multiple log lines, as its goal is to validate if the scenario would have generated an alert.

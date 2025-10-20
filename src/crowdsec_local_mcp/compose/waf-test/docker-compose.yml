@@ -11,8 +11,8 @@ services:
       - /usr/local/bin/init-bouncer.sh
     environment:
       # Ensure the local API stays accessible for the nginx bouncer.
-      - DISABLE_LOCAL_API=0
-      - DISABLE_ONLINE_API=1
+      - DISABLE_LOCAL_API=false
+      - DISABLE_ONLINE_API=true
       # Turn on AppSec mode inside the CrowdSec container.
       - ENABLE_APPSEC=1
     volumes:
@@ -43,7 +43,7 @@ services:
     command:
       - openresty
       - -g
-      - 'daemon off;'
+      - "daemon off;"
     volumes:
       - ./nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
       # Site config enabling the CrowdSec module and proxying to the backend.

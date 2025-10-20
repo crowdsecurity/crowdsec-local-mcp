@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 from collections.abc import Callable
+import subprocess
 
 import jsonschema
 import yaml
@@ -8,11 +9,15 @@ import yaml
 from mcp import types
 
 from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
+from .utils import detect_compose_command
 
 SCENARIO_PROMPT_FILE = PROMPTS_DIR / "prompt-scenario.txt"
 SCENARIO_EXAMPLES_FILE = PROMPTS_DIR / "prompt-scenario-examples.txt"
 SCENARIO_SCHEMA_FILE = SCRIPT_DIR / "yaml-schemas" / "scenario_schema.yaml"
 SCENARIO_DEPLOY_PROMPT_FILE = PROMPTS_DIR / "prompt-scenario-deploy.txt"
+SCENARIO_COMPOSE_DIR = SCRIPT_DIR / "compose" / "scenario-test"
+SCENARIO_COMPOSE_FILE = SCENARIO_COMPOSE_DIR / "docker-compose.yml"
+SCENARIO_PROJECT_NAME = "crowdsec-mcp-scenario"
 
 REQUIRED_SCENARIO_FIELDS = ["name", "description", "type"]
 EXPECTED_TYPE_VALUES = {"leaky", "trigger", "counter", "conditional", "bayesian"}
@@ -281,6 +286,169 @@ def _tool_deploy_scenario(_: dict[str, Any] | None) -> list[types.TextContent]:
             )
         ]
 
+def _run_scenario_compose_command(
+    args: list[str], capture_output: bool = True, check: bool = True
+) -> subprocess.CompletedProcess:
+    """Run a docker compose command within the scenario test harness directory."""
+    if not SCENARIO_COMPOSE_FILE.exists():
+        raise RuntimeError(
+            f"Scenario docker-compose file not found at {SCENARIO_COMPOSE_FILE}"
+        )
+
+    base_cmd = detect_compose_command()
+    full_cmd = base_cmd + ["-p", SCENARIO_PROJECT_NAME, "-f", str(SCENARIO_COMPOSE_FILE)] + args
+    LOGGER.info("Executing scenario compose command: %s", " ".join(full_cmd))
+
+    try:
+        return subprocess.run(
+            full_cmd,
+            cwd=str(SCENARIO_COMPOSE_DIR),
+            capture_output=capture_output,
+            text=True,
+            check=check,
+        )
+    except FileNotFoundError as error:
+        LOGGER.error("Scenario compose command failed to start: %s", error)
+        raise RuntimeError(f"Failed to run {' '.join(base_cmd)}: {error}") from error
+    except subprocess.CalledProcessError as error:
+        stdout = (error.stdout or "").strip()
+        stderr = (error.stderr or "").strip()
+        combined = "\n".join(part for part in (stdout, stderr) if part) or str(error)
+        LOGGER.error(
+            "Scenario compose command exited with %s: %s",
+            error.returncode,
+            combined.splitlines()[0] if combined else "no output",
+        )
+        raise RuntimeError(
+            f"docker compose {' '.join(args)} failed (exit code {error.returncode}):\n{combined}"
+        ) from error
+
+def _compose_stack_running() -> bool:
+    if not SCENARIO_COMPOSE_FILE.exists():
+        LOGGER.warning(
+            "Scenario stack status requested but compose file missing at %s", SCENARIO_COMPOSE_FILE
+        )
+        return False
+
+    result = _run_scenario_compose_command(["ps", "-q"], capture_output=True, check=False)
+    if result.returncode != 0:
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+        combined = "\n".join(part for part in (stdout, stderr) if part) or "no output"
+        raise RuntimeError(
+            f"docker compose ps failed (exit code {result.returncode}):\n{combined}"
+        )
+    return bool((result.stdout or "").strip())
+
+def _compose_stack_start() -> bool:
+    if _compose_stack_running():
+        LOGGER.info("Scenario stack already running; skipping start request")
+        return False
+
+    LOGGER.info("Starting scenario test stack")
+    _run_scenario_compose_command(["up", "-d"], capture_output=True, check=True)
+    return True
+
+def _compose_stack_stop() -> None:
+    if not SCENARIO_COMPOSE_FILE.exists():
+        LOGGER.warning(
+            "Scenario stack stop requested but compose file missing at %s", SCENARIO_COMPOSE_FILE
+        )
+        return
+
+    LOGGER.info("Stopping scenario test stack")
+    _run_scenario_compose_command(["down"], capture_output=True, check=True)
+
+def _compose_stack_reload_crowdsec() -> None:
+    if not _compose_stack_running():
+        raise RuntimeError("Scenario stack is not running; start it before reloading CrowdSec.")
+
+    LOGGER.info("Reloading CrowdSec process inside scenario test stack")
+    result = _run_scenario_compose_command(
+        ["exec", "-T", "crowdsec", "sh", "-c", "kill -HUP 1"],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+        combined = "\n".join(part for part in (stdout, stderr) if part) or "no output"
+        raise RuntimeError(
+            f"Failed to reload CrowdSec via SIGHUP (exit code {result.returncode}):\n{combined}"
+        )
+
+def _tool_manage_scenario_stack(arguments: dict[str, Any] | None) -> list[types.TextContent]:
+    try:
+        if not arguments:
+            LOGGER.warning("manage_scenario_stack called without arguments")
+            raise ValueError("Missing arguments payload")
+
+        action = arguments.get("action")
+        if action not in {"start", "stop", "reload"}:
+            LOGGER.warning("manage_scenario_stack received invalid action: %s", action)
+            raise ValueError("Action must be one of: start, stop, reload")
+
+        if action == "start":
+            started = _compose_stack_start()
+            message = (
+                "✅ Scenario stack started. CrowdSec container is running."
+                if started
+                else "ℹ️ Scenario stack already running; reusing existing containers."
+            )
+            return [types.TextContent(type="text", text=message)]
+
+        if action == "stop":
+            if _compose_stack_running():
+                _compose_stack_stop()
+                message = "🛑 Scenario stack stopped and containers removed."
+            else:
+                LOGGER.info("Scenario stack stop requested but stack was not running")
+                _compose_stack_stop()
+                message = "ℹ️ Scenario stack was already stopped."
+            return [types.TextContent(type="text", text=message)]
+
+        _compose_stack_reload_crowdsec()
+        return [
+            types.TextContent(
+                type="text",
+                text="🔄 CrowdSec process reloaded inside the scenario stack.",
+            )
+        ]
+
+    except Exception as exc:
+        LOGGER.error("manage_scenario_stack error: %s", exc)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"❌ Stack management error: {exc}",
+            )
+        ]
+
+
+def _tool_explain_scenario(arguments: dict[str, Any] | None) -> list[types.TextContent]:
+    if not arguments:
+        LOGGER.warning("Scenario explanation requested without arguments")
+        raise ValueError("Arguments are required for scenario explanation")
+    if not all(key in arguments for key in ("scenario_yaml", "log_line", "log_type", "collections")):
+        LOGGER.warning("Scenario explanation requested with missing arguments")
+        raise ValueError("scenario_yaml, log_line, log_type, and collections are required arguments")
+
+    scenario_yaml = arguments["scenario_yaml"]
+    log_line = arguments["log_line"]
+    log_type = arguments["log_type"]
+    collections = arguments["collections"]
+
+    # First, write the scenario content to `compose/scenario-test/scenarios/custom.yaml`
+    with open("compose/scenario-test/scenarios/custom.yaml", "w") as f:
+        f.write(scenario_yaml)
+
+    return [
+        types.TextContent(
+            type="text",
+            text="This tool explains the scenario based on the provided arguments."
+        )
+    ]
+
 
 SCENARIO_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "get_scenario_prompt": _tool_get_scenario_prompt,
@@ -288,6 +456,8 @@ SCENARIO_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "validate_scenario_yaml": _tool_validate_scenario,
     "lint_scenario_yaml": _tool_lint_scenario,
     "deploy_scenario": _tool_deploy_scenario,
+    "explain_scenario": _tool_explain_scenario,
+    "manage_scenario_stack": _tool_manage_scenario_stack,
 }
 
 SCENARIO_TOOLS: list[types.Tool] = [
@@ -345,6 +515,50 @@ SCENARIO_TOOLS: list[types.Tool] = [
         inputSchema={
             "type": "object",
             "properties": {},
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="manage_scenario_stack",
+        description="Manage the lifecycle of the scenario testing stack (ONLY USE FOR TESTING SCENARIOS)",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["start", "stop", "reload"],
+                    "description": "Action to perform on the scenario testing stack",
+                },
+            },
+            "required": ["action"],
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="explain_scenario",
+        description="Explain the provided CrowdSec scenario and its components",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "scenario_yaml": {
+                    "type": "string",
+                    "description": "Scenario YAML to explain",
+                },
+                "log_type": {
+                    "type": "string",
+                    "description": "Type of logs the scenario is intended to analyze",
+                },
+                "collections": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of CrowdSec collections to install alongside the scenario",
+                },
+                "log_line": {
+                    "type": "string",
+                    "description": "Example log line that should trigger the scenario",
+                },
+            },
+            "required": ["scenario_yaml", "log_line", "log_type", "collections"],
             "additionalProperties": False,
         },
     ),
