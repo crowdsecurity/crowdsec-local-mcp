@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import tempfile
 from collections import OrderedDict

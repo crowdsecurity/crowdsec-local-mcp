@@ -86,7 +86,6 @@ ignore = [
     "EM101",    # Exception must not use a string literal, assign to variable first
     "EM102",    # Exception must not use an f-string literal, assign to variable first
     "EXE001",   # Shebang is present but file is not executable
-    "F401",     # `...` imported but unused
     "FBT001",   # Boolean-typed positional argument in function definition
     "FBT002",   # Boolean default positional argument in function definition
     "FURB188",  # Prefer `str.removesuffix()` over conditionally replacing with slice.
@@ -98,7 +97,6 @@ ignore = [
     "RET505",   # Unnecessary `elif` after `return` statement
     "RUF005",   # Consider `[...]` instead of concatenation
     "RUF010",   # Use explicit conversion flag
-    "RUF100",   # Unused `noqa` directive (non-enabled: `F401`)
     "S603",     # `subprocess` call: check for execution of untrusted input
     "SIM102",   # Use a single `if` statement instead of nested `if` statements
     "T201",     # `print` found
