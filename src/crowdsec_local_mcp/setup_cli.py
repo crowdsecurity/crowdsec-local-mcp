@@ -6,7 +6,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from collections.abc import Iterable
 
 SERVER_KEY = "crowdsec-local-mcp"
 SERVER_LABEL = "CrowdSec MCP"
@@ -15,14 +15,14 @@ SERVER_LABEL = "CrowdSec MCP"
 @dataclass
 class CLIArgs:
     target: str
-    config_path: Optional[Path]
+    config_path: Path | None
     dry_run: bool
     force: bool
-    command_override: Optional[str]
-    cwd_override: Optional[Path]
+    command_override: str | None
+    cwd_override: Path | None
 
 
-def main(argv: Optional[Iterable[str]] = None) -> None:
+def main(argv: Iterable[str] | None = None) -> None:
     args = _parse_args(argv)
     command, cmd_args = _resolve_runner(args.command_override)
     server_payload = {
@@ -50,7 +50,7 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
         raise ValueError(f"Unsupported target '{args.target}'")
 
 
-def _parse_args(argv: Optional[Iterable[str]]) -> CLIArgs:
+def _parse_args(argv: Iterable[str] | None) -> CLIArgs:
     parser = argparse.ArgumentParser(
         prog="init",
         description=(
@@ -105,7 +105,7 @@ def _parse_args(argv: Optional[Iterable[str]]) -> CLIArgs:
     )
 
 
-def _resolve_runner(command_override: Optional[str]) -> Tuple[str, List[str]]:
+def _resolve_runner(command_override: str | None) -> tuple[str, list[str]]:
     if command_override:
         command_parts = command_override.strip().split()
         if not command_parts:
@@ -129,7 +129,7 @@ def _resolve_runner(command_override: Optional[str]) -> Tuple[str, List[str]]:
     return python_executable, ["-m", "crowdsec_local_mcp"]
 
 
-def _configure_claude(args: CLIArgs, server_payload: Dict[str, object]) -> None:
+def _configure_claude(args: CLIArgs, server_payload: dict[str, object]) -> None:
     config_path = _resolve_path(args.config_path, _claude_candidates())
     _write_mcp_config(
         config_path,
@@ -139,7 +139,7 @@ def _configure_claude(args: CLIArgs, server_payload: Dict[str, object]) -> None:
     )
 
 
-def _configure_chatgpt(args: CLIArgs, server_payload: Dict[str, object]) -> None:
+def _configure_chatgpt(args: CLIArgs, server_payload: dict[str, object]) -> None:
     config_path = _resolve_path(args.config_path, _chatgpt_candidates())
     _write_mcp_config(
         config_path,
@@ -149,9 +149,9 @@ def _configure_chatgpt(args: CLIArgs, server_payload: Dict[str, object]) -> None
     )
 
 
-def _configure_vscode(args: CLIArgs, server_payload: Dict[str, object]) -> None:
+def _configure_vscode(args: CLIArgs, server_payload: dict[str, object]) -> None:
     config_path = _resolve_path(args.config_path, _vscode_candidates())
-    vscode_payload: Dict[str, object] = {
+    vscode_payload: dict[str, object] = {
         "command": server_payload["command"],
         "args": server_payload["args"],
     }
@@ -171,13 +171,22 @@ def _configure_vscode(args: CLIArgs, server_payload: Dict[str, object]) -> None:
 
 def _write_mcp_config(
     config_path: Path,
-    server_payload: Dict[str, object],
+    server_payload: dict[str, object],
     args: CLIArgs,
     *,
     client_name: str,
     servers_key: str = "mcpServers",
 ) -> None:
-    config, existed = _load_json(config_path, allow_missing=True)
+    manual_snippet = json.dumps(
+        {servers_key: {SERVER_KEY: server_payload}}, indent=2
+    )
+    config, existed = _load_json(
+        config_path,
+        allow_missing=True,
+        fallback_snippet=manual_snippet,
+    )
+    if config is None:
+        return
     if not existed and not (args.force or args.dry_run):
         raise FileNotFoundError(
             f"{config_path} does not exist. Re-run with --force to create it "
@@ -199,7 +208,7 @@ def _write_mcp_config(
     print(f"Configured {client_name} at {config_path}")
 
 
-def _print_stdio(server_payload: Dict[str, object]) -> None:
+def _print_stdio(server_payload: dict[str, object]) -> None:
     snippet = {
         "server": SERVER_KEY,
         "command": server_payload["command"],
@@ -209,13 +218,19 @@ def _print_stdio(server_payload: Dict[str, object]) -> None:
     if cwd is not None:
         snippet["cwd"] = cwd
 
+    snippet_json = json.dumps(snippet, indent=2)
     print(
         "Use the following configuration with stdio-compatible MCP clients:\n"
-        f"{json.dumps(snippet, indent=2)}"
+        f"{snippet_json}"
     )
 
 
-def _load_json(path: Path, *, allow_missing: bool) -> Tuple[Dict[str, object], bool]:
+def _load_json(
+    path: Path,
+    *,
+    allow_missing: bool,
+    fallback_snippet: str | None = None,
+) -> tuple[dict[str, object] | None, bool]:
     if not path.exists():
         if allow_missing:
             return {}, False
@@ -228,10 +243,16 @@ def _load_json(path: Path, *, allow_missing: bool) -> Tuple[Dict[str, object], b
     try:
         return json.loads(content), True
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Failed to parse JSON from {path}: {exc}") from exc
+        manual_msg = (
+            f"Couldn't parse {path}: {exc}.\n"
+            "Edit it manually to add:\n\n"
+            f"{fallback_snippet or '<no snippet available>'}"
+        )
+        print(manual_msg)
+        return None, True
 
 
-def _resolve_path(explicit: Optional[Path], candidates: List[Path]) -> Path:
+def _resolve_path(explicit: Path | None, candidates: list[Path]) -> Path:
     if explicit:
         return explicit.expanduser()
 
@@ -258,7 +279,7 @@ def _backup_file_if_exists(path: Path) -> None:
     print(f"Existing configuration backed up to {backup_path}")
 
 
-def _claude_candidates() -> List[Path]:
+def _claude_candidates() -> list[Path]:
     system = platform.system()
     if system == "Darwin":
         return [
@@ -274,7 +295,7 @@ def _claude_candidates() -> List[Path]:
     return [Path.home() / ".config" / "Claude" / "claude_desktop_config.json"]
 
 
-def _chatgpt_candidates() -> List[Path]:
+def _chatgpt_candidates() -> list[Path]:
     system = platform.system()
     if system == "Darwin":
         return [
@@ -290,7 +311,7 @@ def _chatgpt_candidates() -> List[Path]:
     return [Path.home() / ".config" / "ChatGPT" / "config.json"]
 
 
-def _vscode_candidates() -> List[Path]:
+def _vscode_candidates() -> list[Path]:
     system = platform.system()
     if system == "Windows":
         base = Path(os.environ.get("APPDATA", Path.home()))
