@@ -230,9 +230,9 @@ def _run_nuclei_container(
     *,
     nuclei_image: str,
     target_url: str,
-    nuclei_args: Optional[List[str]] = None,
+    nuclei_args: list[str] | None = None,
     timeout: int = 180,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Run the provided nuclei template inside a disposable docker container."""
     rel_template = template_path.relative_to(workspace)
     container_template_path = f"/nuclei/{rel_template.as_posix()}"
@@ -773,7 +773,7 @@ def _tool_generate_waf_rule(arguments: dict[str, Any] | None) -> list[types.Text
         ]
 
 
-def _tool_generate_waf_tests(arguments: Optional[Dict[str, Any]]) -> List[types.TextContent]:
+def _tool_generate_waf_tests(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         tests_prompt = WAF_TESTS_PROMPT_FILE.read_text(encoding="utf-8")
         nuclei_template = arguments.get("nuclei_template") if arguments else None
@@ -952,7 +952,7 @@ def _tool_manage_waf_stack(arguments: dict[str, Any] | None) -> list[types.TextC
         ]
 
 
-def _tool_run_waf_tests(arguments: Optional[Dict[str, Any]]) -> List[types.TextContent]:
+def _tool_run_waf_tests(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     stack_started_here = False
     try:
         if not arguments:
