@@ -90,3 +90,7 @@ After delivering a validated scenario, remind the user that the next step is dep
 Always call `explain_scenario` first. This tool will return details about the fields crowdsec extracted from the log line, and whether any scenario matched (IMPORTANT: any `leaky` scenario will require multiple events to generate an alert, the match only tells that the event was of interest for the scenario).
 
 The `test_scenario` tool requires multiple log lines, as its goal is to validate if the scenario would have generated an alert.
+
+Log lines *must* be provided by the user, *NEVER* attempt to generate example logs yourself. You can infer the log type (nginx, apache, traefik, syslog, ....) if you are sure about the format. If not, ask the user to provide the log type.
+
+Based on the log type, install the proper collection so that crowdsec will be able to parse it.
