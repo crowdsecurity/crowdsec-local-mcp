@@ -91,7 +91,6 @@ ignore = [
     "PERF401",  # Use `list.extend` to create a transformed list
     "PLW0603",  # Using the global statement to update `...` is discouraged
     "PLW1510",  # `subprocess.run` without explicit `check` argument
-    "RET505",   # Unnecessary `elif` after `return` statement
     "RUF005",   # Consider `[...]` instead of concatenation
     "S603",     # `subprocess` call: check for execution of untrusted input
     "SIM102",   # Use a single `if` statement instead of nested `if` statements
