@@ -46,8 +46,8 @@ class MCPRegistry:
 
     def __init__(self) -> None:
         self._tool_handlers: dict[str, ToolHandler] = {}
-        self._tools: "OrderedDict[str, types.Tool]" = OrderedDict()
-        self._resources: "OrderedDict[str, types.Resource]" = OrderedDict()
+        self._tools: OrderedDict[str, types.Tool] = OrderedDict()
+        self._resources: OrderedDict[str, types.Resource] = OrderedDict()
         self._resource_readers: dict[str, ResourceReader] = {}
 
     def register_tools(
