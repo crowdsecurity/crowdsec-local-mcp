@@ -2,7 +2,7 @@ import logging
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from collections.abc import Callable
 
 import mcp.server.stdio
@@ -37,7 +37,7 @@ def _configure_logger() -> logging.Logger:
 LOGGER = _configure_logger()
 server = Server("crowdsec-prompt-server")
 
-ToolHandler = Callable[[Optional[dict[str, Any]]], list[types.TextContent]]
+ToolHandler = Callable[[dict[str, Any] | None], list[types.TextContent]]
 ResourceReader = Callable[[], str]
 
 
@@ -112,7 +112,7 @@ async def handle_list_tools() -> list[types.Tool]:
 
 @server.call_tool()
 async def handle_call_tool(
-    name: str, arguments: Optional[dict[str, Any]]
+    name: str, arguments: dict[str, Any] | None
 ) -> list[types.TextContent]:
     LOGGER.info("handle_call_tool invoked for tool '%s'", name)
     handler = REGISTRY.get_tool_handler(name)

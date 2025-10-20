@@ -6,7 +6,6 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from collections.abc import Iterable
 
 SERVER_KEY = "crowdsec-local-mcp"
@@ -16,14 +15,14 @@ SERVER_LABEL = "CrowdSec MCP"
 @dataclass
 class CLIArgs:
     target: str
-    config_path: Optional[Path]
+    config_path: Path | None
     dry_run: bool
     force: bool
-    command_override: Optional[str]
-    cwd_override: Optional[Path]
+    command_override: str | None
+    cwd_override: Path | None
 
 
-def main(argv: Optional[Iterable[str]] = None) -> None:
+def main(argv: Iterable[str] | None = None) -> None:
     args = _parse_args(argv)
     command, cmd_args = _resolve_runner(args.command_override)
     server_payload = {
@@ -51,7 +50,7 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
         raise ValueError(f"Unsupported target '{args.target}'")
 
 
-def _parse_args(argv: Optional[Iterable[str]]) -> CLIArgs:
+def _parse_args(argv: Iterable[str] | None) -> CLIArgs:
     parser = argparse.ArgumentParser(
         prog="init",
         description=(
@@ -106,7 +105,7 @@ def _parse_args(argv: Optional[Iterable[str]]) -> CLIArgs:
     )
 
 
-def _resolve_runner(command_override: Optional[str]) -> tuple[str, list[str]]:
+def _resolve_runner(command_override: str | None) -> tuple[str, list[str]]:
     if command_override:
         command_parts = command_override.strip().split()
         if not command_parts:
@@ -230,8 +229,8 @@ def _load_json(
     path: Path,
     *,
     allow_missing: bool,
-    fallback_snippet: Optional[str] = None,
-) -> tuple[Optional[dict[str, object]], bool]:
+    fallback_snippet: str | None = None,
+) -> tuple[dict[str, object] | None, bool]:
     if not path.exists():
         if allow_missing:
             return {}, False
@@ -253,7 +252,7 @@ def _load_json(
         return None, True
 
 
-def _resolve_path(explicit: Optional[Path], candidates: list[Path]) -> Path:
+def _resolve_path(explicit: Path | None, candidates: list[Path]) -> Path:
     if explicit:
         return explicit.expanduser()
 

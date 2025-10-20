@@ -2,7 +2,7 @@ import subprocess
 import time
 import urllib.parse
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from collections.abc import Callable
 
 import jsonschema
@@ -46,8 +46,8 @@ DEFAULT_EXPLOIT_TARGET_DIR = SCRIPT_DIR / "cached-exploits"
 CASE_SENSITIVE_MATCH_TYPES = ["regex", "contains", "startsWith", "endsWith", "equals"]
 SQL_KEYWORD_INDICATORS = ["union", "select", "insert", "update", "delete", "drop"]
 
-_COMPOSE_CMD_CACHE: Optional[list[str]] = None
-_COMPOSE_STACK_PROCESS: Optional[subprocess.Popen] = None
+_COMPOSE_CMD_CACHE: list[str] | None = None
+_COMPOSE_STACK_PROCESS: subprocess.Popen | None = None
 
 
 def _detect_compose_command() -> list[str]:
@@ -83,7 +83,7 @@ def _detect_compose_command() -> list[str]:
     )
 
 
-def _collect_compose_logs(services: Optional[list[str]] = None, tail_lines: int = 200) -> str:
+def _collect_compose_logs(services: list[str] | None = None, tail_lines: int = 200) -> str:
     cmd = _detect_compose_command() + [
         "-p",
         WAF_TEST_PROJECT_NAME,
@@ -218,7 +218,7 @@ def _wait_for_crowdsec_ready(timeout: int = 90) -> None:
     raise RuntimeError("CrowdSec local API did not become ready in time")
 
 
-def _start_waf_test_stack(rule_yaml: str) -> tuple[Optional[str], Optional[str]]:
+def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
     global _COMPOSE_STACK_PROCESS
     LOGGER.info("Starting WAF test stack")
     if not WAF_TEST_COMPOSE_FILE.exists():
@@ -556,7 +556,7 @@ def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
         ]
 
 
-def _tool_get_waf_prompt(_: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_get_waf_prompt(_: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         LOGGER.info("Serving WAF prompt content")
         prompt_content = WAF_PROMPT_FILE.read_text(encoding="utf-8")
@@ -584,7 +584,7 @@ def _tool_get_waf_prompt(_: Optional[dict[str, Any]]) -> list[types.TextContent]
         ]
 
 
-def _tool_get_waf_examples(_: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_get_waf_examples(_: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         LOGGER.info("Serving WAF examples content")
         examples_content = WAF_EXAMPLES_FILE.read_text(encoding="utf-8")
@@ -612,7 +612,7 @@ def _tool_get_waf_examples(_: Optional[dict[str, Any]]) -> list[types.TextConten
         ]
 
 
-def _tool_generate_waf_rule(arguments: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_generate_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         main_prompt = WAF_PROMPT_FILE.read_text(encoding="utf-8")
         examples_prompt = WAF_EXAMPLES_FILE.read_text(encoding="utf-8")
@@ -654,7 +654,7 @@ def _tool_generate_waf_rule(arguments: Optional[dict[str, Any]]) -> list[types.T
         ]
 
 
-def _tool_validate_waf_rule(arguments: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_validate_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     if not arguments or "rule_yaml" not in arguments:
         LOGGER.warning("Validation request missing 'rule_yaml' argument")
         return [
@@ -669,7 +669,7 @@ def _tool_validate_waf_rule(arguments: Optional[dict[str, Any]]) -> list[types.T
     return _validate_waf_rule(rule_yaml)
 
 
-def _tool_lint_waf_rule(arguments: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_lint_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     if not arguments or "rule_yaml" not in arguments:
         LOGGER.warning("Lint request missing 'rule_yaml' argument")
         return [
@@ -684,7 +684,7 @@ def _tool_lint_waf_rule(arguments: Optional[dict[str, Any]]) -> list[types.TextC
     return _lint_waf_rule(rule_yaml)
 
 
-def _tool_deploy_waf_rule(_: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_deploy_waf_rule(_: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         LOGGER.info("Serving WAF deployment guide content")
         deploy_content = WAF_DEPLOY_FILE.read_text(encoding="utf-8")
@@ -712,7 +712,7 @@ def _tool_deploy_waf_rule(_: Optional[dict[str, Any]]) -> list[types.TextContent
         ]
 
 
-def _tool_manage_waf_stack(arguments: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_manage_waf_stack(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         if not arguments:
             LOGGER.warning("manage_waf_stack called without arguments")
@@ -796,7 +796,7 @@ def _search_repo_for_cve(repo_path: Path, cve: str) -> list[Path]:
     return matches
 
 
-def _tool_fetch_nuclei_exploit(arguments: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_fetch_nuclei_exploit(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         if not arguments:
             LOGGER.warning("fetch_nuclei_exploit called without arguments")
@@ -908,7 +908,7 @@ def _tool_fetch_nuclei_exploit(arguments: Optional[dict[str, Any]]) -> list[type
         ]
 
 
-def _tool_curl_waf_endpoint(arguments: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_curl_waf_endpoint(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         if not arguments:
             LOGGER.warning("curl_waf_endpoint called without arguments")

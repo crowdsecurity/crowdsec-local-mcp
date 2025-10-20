@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from collections.abc import Callable
 
 import jsonschema
@@ -17,7 +17,7 @@ SCENARIO_DEPLOY_PROMPT_FILE = PROMPTS_DIR / "prompt-scenario-deploy.txt"
 REQUIRED_SCENARIO_FIELDS = ["name", "description", "type"]
 EXPECTED_TYPE_VALUES = {"leaky", "trigger", "counter", "conditional", "bayesian"}
 RECOMMENDED_FIELDS = ["filter", "groupby", "leakspeed", "capacity", "labels"]
-_SCENARIO_SCHEMA_CACHE: Optional[dict[str, Any]] = None
+_SCENARIO_SCHEMA_CACHE: dict[str, Any] | None = None
 
 
 def _read_text(path: Path) -> str:
@@ -40,7 +40,7 @@ def _load_scenario_schema() -> dict[str, Any]:
     return schema
 
 
-def _tool_get_scenario_prompt(_: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_get_scenario_prompt(_: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         LOGGER.info("Serving scenario authoring prompt content")
         return [
@@ -67,7 +67,7 @@ def _tool_get_scenario_prompt(_: Optional[dict[str, Any]]) -> list[types.TextCon
         ]
 
 
-def _tool_get_scenario_examples(_: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_get_scenario_examples(_: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         LOGGER.info("Serving scenario example bundle")
         return [
@@ -143,7 +143,7 @@ def _validate_scenario_yaml(raw_yaml: str) -> dict[str, Any]:
     return parsed
 
 
-def _tool_validate_scenario(arguments: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_validate_scenario(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     if not arguments or "scenario_yaml" not in arguments:
         LOGGER.warning("Scenario validation requested without 'scenario_yaml'")
         return [
@@ -173,7 +173,7 @@ def _tool_validate_scenario(arguments: Optional[dict[str, Any]]) -> list[types.T
         ]
 
 
-def _tool_lint_scenario(arguments: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_lint_scenario(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     if not arguments or "scenario_yaml" not in arguments:
         LOGGER.warning("Scenario lint requested without 'scenario_yaml'")
         return [
@@ -255,7 +255,7 @@ def _tool_lint_scenario(arguments: Optional[dict[str, Any]]) -> list[types.TextC
     ]
 
 
-def _tool_deploy_scenario(_: Optional[dict[str, Any]]) -> list[types.TextContent]:
+def _tool_deploy_scenario(_: dict[str, Any] | None) -> list[types.TextContent]:
     LOGGER.info("Serving scenario deployment helper prompt")
     try:
         return [

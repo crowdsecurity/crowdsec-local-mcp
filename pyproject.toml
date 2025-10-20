@@ -103,7 +103,6 @@ ignore = [
     "TRY003",   # Avoid specifying long messages outside the exception class
     "TRY004",   # Prefer `TypeError` exception for invalid type
     "TRY301",   # Abstract `raise` to an inner function
-    "UP045",    # Use `X | None` for type annotations
 ]
 
 [tool.ruff.lint.pylint]
