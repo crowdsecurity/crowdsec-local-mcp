@@ -91,7 +91,6 @@ ignore = [
     "FURB188",  # Prefer `str.removesuffix()` over conditionally replacing with slice.
     "I001",     # Import block is un-sorted or un-formatted
     "PERF401",  # Use `list.extend` to create a transformed list
-    "PLR0402",  # Use `...` in lieu of alias
     "PLW0603",  # Using the global statement to update `...` is discouraged
     "PLW1510",  # `subprocess.run` without explicit `check` argument
     "RET505",   # Unnecessary `elif` after `return` statement

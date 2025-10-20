@@ -6,7 +6,7 @@ from typing import Any
 from collections.abc import Callable
 
 import mcp.server.stdio
-import mcp.types as types
+from mcp import types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 

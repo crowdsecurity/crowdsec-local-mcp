@@ -5,7 +5,7 @@ from collections.abc import Callable
 import jsonschema
 import yaml
 
-import mcp.types as types
+from mcp import types
 
 from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
 
