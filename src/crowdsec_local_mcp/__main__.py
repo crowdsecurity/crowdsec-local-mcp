@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-
-# Use `uv run --project . <command>` to run this module directly for testing.
+# Use `uv run --project . crowdsec-mcp` to run this module directly for testing.
 
 import asyncio
 
