@@ -278,7 +278,7 @@ def _run_nuclei_container(
 
     stdout = (result.stdout or "").strip()
     stderr = (result.stderr or "").strip()
-    details: List[str] = []
+    details: list[str] = []
     if stdout:
         details.append(f"stdout:\n{stdout}")
     if stderr:
@@ -293,8 +293,8 @@ def _run_nuclei_container(
         )
         return (False, failure)
 
-    matches: List[Dict[str, Any]] = []
-    unmatched_lines: List[str] = []
+    matches: list[dict[str, Any]] = []
+    unmatched_lines: list[str] = []
     for line in stdout.splitlines():
         if not line.strip():
             continue
@@ -877,7 +877,7 @@ def _tool_deploy_waf_rule(_: dict[str, Any] | None) -> list[types.TextContent]:
         return [
             types.TextContent(
                 type="text",
-                text=f"Error reading WAF deployment guide: {str(exc)}",
+                text=f"Error reading WAF deployment guide: {str(exc)}"
             )
         ]
 
