@@ -96,7 +96,6 @@ ignore = [
     "PLW1510",  # `subprocess.run` without explicit `check` argument
     "RET505",   # Unnecessary `elif` after `return` statement
     "RUF005",   # Consider `[...]` instead of concatenation
-    "RUF010",   # Use explicit conversion flag
     "S603",     # `subprocess` call: check for execution of untrusted input
     "SIM102",   # Use a single `if` statement instead of nested `if` statements
     "T201",     # `print` found
