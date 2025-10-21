@@ -56,7 +56,7 @@ rules:
               value: '"'
 """
         output = _lint_output(rule_yaml)
-        self.assertIn("uses both 'and' and 'or' operators", output)
+        assert("uses both 'and' and 'or' operators" in output)
     def test_case_sensitivity(self) -> None:
         rule_yaml = """
 name: xx/xx
@@ -70,7 +70,7 @@ rules:
           value: '^/PRODUCTS/[0-9]+/?$'
 """
         output = _lint_output(rule_yaml)
-        self.assertIn("uses 'regex' with uppercase letters but no 'lowercase' transform", output)
+        assert("uses 'regex' with uppercase letters but no 'lowercase' transform" in output)
 
 if __name__ == "__main__":
     unittest.main()
