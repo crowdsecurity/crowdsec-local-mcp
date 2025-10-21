@@ -15,6 +15,7 @@ from mcp import types
 
 from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
 
+WAF_TOP_LEVEL_PROMPT_FILE = PROMPTS_DIR / "prompt-waf-top-level.txt"
 WAF_PROMPT_FILE = PROMPTS_DIR / "prompt-waf.txt"
 WAF_EXAMPLES_FILE = PROMPTS_DIR / "prompt-waf-examples.txt"
 WAF_DEPLOY_FILE = PROMPTS_DIR / "prompt-waf-deploy.txt"
@@ -539,18 +540,36 @@ def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
         else:
             warnings.append("Field 'name' should be a string")
 
-    def check_rule_item(rule_item: Any, rule_path: str = "") -> None:
-        """Recursively check rule items for case sensitivity issues."""
+    def check_rule_item(rule_item: Any, rule_path: str = "") -> tuple[bool, bool]:
+        """Recursively check rule items and report operator usage."""
         if not isinstance(rule_item, dict):
-            return
+            return (False, False)
 
-        if "and" in rule_item:
+        
+        location = f"rules{rule_path}" if rule_path else "rules"
+        has_and = "and" in rule_item
+        has_or = "or" in rule_item
+        contains_and = has_and
+        contains_or = has_or
+
+        if has_and and has_or:
+            warnings.append(
+                f"{location} mixes 'and' and 'or' operators at the same level; split them into separate nested blocks"
+            )
+
+        if has_and:
             for i, sub_rule in enumerate(rule_item["and"]):
-                check_rule_item(sub_rule, f"{rule_path}.and[{i}]")
-        elif "or" in rule_item:
+                child_and, child_or = check_rule_item(sub_rule, f"{rule_path}.and[{i}]")
+                contains_and = contains_and or child_and
+                contains_or = contains_or or child_or
+
+        if has_or:
             for i, sub_rule in enumerate(rule_item["or"]):
-                check_rule_item(sub_rule, f"{rule_path}.or[{i}]")
-        elif "match" in rule_item:
+                child_and, child_or = check_rule_item(sub_rule, f"{rule_path}.or[{i}]")
+                contains_and = contains_and or child_and
+                contains_or = contains_or or child_or
+
+        if "match" in rule_item and not (has_and or has_or):
             match = rule_item["match"]
             if isinstance(match, dict):
                 match_type = match.get("type", "")
@@ -567,7 +586,6 @@ def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
                     )
 
                     if not has_lowercase:
-                        location = f"rules{rule_path}" if rule_path else "rules"
                         warnings.append(
                             f"Match at {location} uses '{match_type}' with uppercase letters "
                             f"but no 'lowercase' transform - consider adding lowercase transform for case-insensitive matching"
@@ -577,7 +595,6 @@ def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
                     lower_value = match_value.lower()
                     sql_keywords = [kw for kw in SQL_KEYWORD_INDICATORS if kw in lower_value]
                     if sql_keywords:
-                        location = f"rules{rule_path}" if rule_path else "rules"
                         keywords_str = ", ".join(sorted(set(sql_keywords)))
                         warnings.append(
                             f"Match at {location} contains SQL keyword(s) ({keywords_str}); instead of keyword blacklisting, detect escaping characters like quotes or semicolons"
@@ -586,14 +603,19 @@ def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
                     transforms = rule_item.get("transform", [])
                     if isinstance(transforms, list) and "urldecode" in transforms:
                         if "%" in match_value:
-                            location = f"rules{rule_path}" if rule_path else "rules"
                             warnings.append(
                                 f"Match at {location} applies 'urldecode' but still contains percent-encoded characters; ensure the value is properly decoded or add another urldecode pass."
                             )
 
+        return (contains_and, contains_or)
+
     if "rules" in parsed and isinstance(parsed["rules"], list):
         for i, rule in enumerate(parsed["rules"]):
-            check_rule_item(rule, f"[{i}]")
+            rule_has_and, rule_has_or = check_rule_item(rule, f"[{i}]")
+            if rule_has_and and rule_has_or:
+                warnings.append(
+                    f"rules[{i}] uses both 'and' and 'or' operators somewhere in the block; CrowdSec cannot mix them in one rule, split the logic into separate rules"
+                )
 
     result_lines: list[str] = []
 
@@ -621,6 +643,26 @@ def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
             text="\n".join(result_lines),
         )
     ]
+
+
+def _tool_get_waf_top_level_prompt(_: dict[str, Any] | None) -> list[types.TextContent]:
+    try:
+        LOGGER.info("Serving WAF top-level orchestration prompt content")
+        prompt_content = WAF_TOP_LEVEL_PROMPT_FILE.read_text(encoding="utf-8")
+        return [
+            types.TextContent(
+                type="text",
+                text=prompt_content,
+            )
+        ]
+    except FileNotFoundError as exc:
+        LOGGER.error("WAF top-level prompt file not found at %s", WAF_TOP_LEVEL_PROMPT_FILE)
+        raise FileNotFoundError(
+            f"WAF top-level prompt file not found at {WAF_TOP_LEVEL_PROMPT_FILE}"
+        ) from exc
+    except Exception as exc:
+        LOGGER.error("Error loading WAF top-level prompt: %s", exc)
+        raise RuntimeError(f"Error reading WAF top-level prompt file: {exc!s}") from exc
 
 
 def _tool_get_waf_prompt(_: dict[str, Any] | None) -> list[types.TextContent]:
@@ -1121,6 +1163,7 @@ def _tool_curl_waf_endpoint(arguments: dict[str, Any] | None) -> list[types.Text
 
 
 WAF_TOOL_HANDLERS: dict[str, ToolHandler] = {
+    "get_waf_top_level_prompt": _tool_get_waf_top_level_prompt,
     "get_waf_prompt": _tool_get_waf_prompt,
     "get_waf_examples": _tool_get_waf_examples,
     "generate_waf_rule": _tool_generate_waf_rule,
@@ -1135,6 +1178,15 @@ WAF_TOOL_HANDLERS: dict[str, ToolHandler] = {
 }
 
 WAF_TOOLS: list[types.Tool] = [
+    types.Tool(
+        name="get_waf_top_level_prompt",
+        description="Get the top-level CrowdSec WAF workflow prompt that explains how to approach rule and test creation",
+        inputSchema={
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    ),
     types.Tool(
         name="get_waf_prompt",
         description="Get the main WAF rule generation prompt for CrowdSec",
@@ -1316,6 +1368,12 @@ WAF_TOOLS: list[types.Tool] = [
 
 WAF_RESOURCES: list[types.Resource] = [
     types.Resource(
+        uri="file://prompts/prompt-waf-top-level.txt",
+        name="WAF Top-Level Workflow Prompt",
+        description="High-level guidance for handling CrowdSec WAF rule requests and which tools to use",
+        mimeType="text/plain",
+    ),
+    types.Resource(
         uri="file://prompts/prompt-waf.txt",
         name="WAF Rule Generation Prompt",
         description="Main prompt for generating CrowdSec WAF rules from Nuclei templates",
@@ -1342,6 +1400,7 @@ WAF_RESOURCES: list[types.Resource] = [
 ]
 
 WAF_RESOURCE_READERS: dict[str, Callable[[], str]] = {
+    "file://prompts/prompt-waf-top-level.txt": lambda: WAF_TOP_LEVEL_PROMPT_FILE.read_text(encoding="utf-8"),
     "file://prompts/prompt-waf.txt": lambda: WAF_PROMPT_FILE.read_text(encoding="utf-8"),
     "file://prompts/prompt-waf-examples.txt": lambda: WAF_EXAMPLES_FILE.read_text(encoding="utf-8"),
     "file://prompts/prompt-waf-deploy.txt": lambda: WAF_DEPLOY_FILE.read_text(encoding="utf-8"),
