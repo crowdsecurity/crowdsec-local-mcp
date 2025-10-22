@@ -87,6 +87,43 @@ Performs a geo lookup for IP and returns the associated [geoip2.ASN](https://pkg
 
 Returns the `net.IPNet` object associated to the IP if possible.
 
+## URI Related helpers
+
+### `ParseUri(string) map[string][]string`
+
+Parses an URI into a map of string list.
+
+`ParseURI("/foo?a=1&b=2")` would return :
+
+```
+{
+  "a": []string{"1"}, 
+  "b": []string{"2"}
+}
+```
+
+### `PathUnescape(string) string`
+
+`PathUnescape` does the inverse transformation of PathEscape, converting each 3-byte encoded substring of the form "%AB" into the hex-decoded byte 0xAB. It returns an error if any % is not followed by two hexadecimal digits.
+
+### `PathEscape(string) string`
+
+`PathEscape` escapes the string so it can be safely placed inside a URL path segment, replacing special characters (including /) with %XX sequences as needed.
+
+### `QueryUnescape(string) string`
+
+`QueryUnescape` does the inverse transformation of QueryEscape, converting each 3-byte encoded substring of the form "%AB" into the hex-decoded byte 0xAB. It returns an error if any % is not followed by two hexadecimal digits.
+
+### `QueryEscape(string) string`
+
+`QueryEscape` escapes the string so it can be safely placed inside a URL query.
+
+### `ExtractQueryParam(query string, param string) []string`
+
+`ExtractQueryParam` extract the `param` parameter value from the URL query `query` and returns the list of values.
+
+> `any(ExtractQueryParam("/foo?id=1&b=2", "id"), { # == "1" })` returns true if at least one of the `id` parameter value is equal to `1`
+
 ## JSON Helpers
 
 ### `UnmarshalJSON(jsonBlob string, out map[string]interface{}, targetKey string)`
@@ -192,36 +229,6 @@ Returns the uppercase version of the string
 Returns the lowercase version of the string
 
 > `Lower("YOP")`
-
-
-### `ParseUri(string) map[string][]string`
-
-Parses an URI into a map of string list.
-
-`ParseURI("/foo?a=1&b=2")` would return :
-
-```
-{
-  "a": []string{"1"}, 
-  "b": []string{"2"}
-}
-```
-
-### `PathUnescape(string) string`
-
-`PathUnescape` does the inverse transformation of PathEscape, converting each 3-byte encoded substring of the form "%AB" into the hex-decoded byte 0xAB. It returns an error if any % is not followed by two hexadecimal digits.
-
-### `PathEscape(string) string`
-
-`PathEscape` escapes the string so it can be safely placed inside a URL path segment, replacing special characters (including /) with %XX sequences as needed.
-
-### `QueryUnescape(string) string`
-
-`QueryUnescape` does the inverse transformation of QueryEscape, converting each 3-byte encoded substring of the form "%AB" into the hex-decoded byte 0xAB. It returns an error if any % is not followed by two hexadecimal digits.
-
-### `QueryEscape(string) string`
-
-`QueryEscape` escapes the string so it can be safely placed inside a URL query.
 
 ### `Sprintf(format string, a ...interface{}) string`
 

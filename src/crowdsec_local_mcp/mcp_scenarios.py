@@ -839,6 +839,7 @@ SCENARIO_TOOLS: list[types.Tool] = [
         Shows how crowdsec processes a single log line: what is extracted by the parsers, and which scenarios match.
         A match does not mean an alert is generated, only that the event was of interest for the scenario.
         This tool MUST NEVER be called with multiple log lines. If you need to test whether a scenario generates an alert, use the `test_scenario` tool instead.
+        The scenario stack (manage_scenario_stack) must be running to use this tool.
         """,
         inputSchema={
             "type": "object",

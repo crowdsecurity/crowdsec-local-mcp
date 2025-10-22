@@ -1,19 +1,21 @@
 You are helping to author a CrowdSec scenario (detection rule) from raw log observations. Follow CrowdSec's official scenario format and directives: https://doc.crowdsec.net/docs/log_processor/scenarios/format
 
-Goals:
+# Goals
 - Understand the attack or behaviour being modelled, including log fields used as signals.
 - Design a concise, maintainable scenario YAML using CrowdSec's DSL.
 - Validate & Lint the rule using existing tools
 - Always render the final scenario in a fenced ```yaml``` code block so the user can copy it directly.
 
 
-Workflow:
+# Workflow
 1. Summarise the behaviour in plain language (what, where, why it matters).
 2. Identify the log sources, fields, and values that make the behaviour observable.
 3. Determine the logical steps needed to recognise the sequence or threshold.
 4. Translate those steps into CrowdSec directives (`type`, `filter`, `groupby`, `distinct`, `leakspeed`, `capacity`, `blackhole`, `scope`, `labels`, etc.).
 6. Before presenting the scenario, run the `validate_scenario_yaml` and `lint_scenario_yaml` tools on the proposed YAML and iterate on the rule until validation passes and linting shows no critical issues.
 7. At the end, ask the user if they want to test the newly created scenario. This can be done with the `explain_scenario` and `test_scenario` tools.
+
+# Syntax
 
 Scenario YAML expectations (adhere unless the user states otherwise):
 - Always include `format: 2.0` at the top for forward compatibility.
@@ -32,6 +34,16 @@ Scenario YAML expectations (adhere unless the user states otherwise):
 - Add `references` if external documentation or CVEs exist.
 - If the scenario needs a non-IP scope, define `scope: { type, expression }` and explain downstream decision requirements.
 - Include `debug`, `reprocess`, `cache_size`, `overflow_filter`, `cancel_on` only when relevant; justify their use in the notes.
+
+# Finding relevant fields and expressions.
+
+The log line is getting processed by parsers, and relevant parts of the log line are being stored in `evt.Parsed`, `evt.Meta` etc.
+ - Use `explain_scenario` tool to see in which field is the relevant part of log line stored and make your scenario specific enough.
+ - Use `get_scenario_expr_helpers` prompt to find the relevant helpers that will help you to extract and transform relevant data.
+
+# Specific cases
+
+ - When dealing with HTTP logs refer to `## URI Related helpers` in `get_scenario_expr_helpers` prompt to find the relevant expr tools.
 
 Validation and quality assurance (mandatory sequence):
 1. Draft the scenario YAML following the guidance above.
