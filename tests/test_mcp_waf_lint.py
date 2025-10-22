@@ -62,7 +62,7 @@ def test_mixing_and_or_detected() -> None:
     ).strip()
 
     output = lint_output(rule_yaml)
-    assert "uses both 'and' and 'or' operators" in output
+    assert "uses both 'and' and 'or' operators" in output # noqa: S101
 
 
 def test_case_sensitivity_warning() -> None:
@@ -78,4 +78,4 @@ def test_case_sensitivity_warning() -> None:
     ).strip()
 
     output = lint_output(rule_yaml)
-    assert "uses 'regex' with uppercase letters but no 'lowercase' transform" in output
+    assert "uses 'regex' with uppercase letters but no 'lowercase' transform" in output # noqa: S101
