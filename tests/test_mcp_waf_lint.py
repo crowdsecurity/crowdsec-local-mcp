@@ -13,7 +13,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 try:  # pragma: no cover - import guard for optional dependency
-    from crowdsec_local_mcp.mcp_waf import _lint_waf_rule
+    from crowdsec_local_mcp.mcp_waf import lint_waf_rule
 except ModuleNotFoundError as exc:  # pragma: no cover - handled by pytest skip
     pytest.skip(
         reason=f"crowdsec_local_mcp dependency missing: {exc}",
@@ -21,7 +21,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - handled by pytest skip
     )
 
 def lint_output(rule_yaml: str) -> str:
-    result = _lint_waf_rule(rule_yaml)
+    result = lint_waf_rule(rule_yaml)
     return "\n".join(content.text for content in result)
 
 

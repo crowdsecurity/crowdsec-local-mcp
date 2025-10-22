@@ -581,7 +581,7 @@ def _analyze_rule_item(
     return (contains_and, contains_or)
 
 
-def _lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
+def lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
     """Lint a CrowdSec WAF rule and provide warnings/hints for improvement."""
     LOGGER.info("Linting WAF rule YAML (size=%s bytes)", len(rule_yaml.encode("utf-8")))
     try:
@@ -807,7 +807,7 @@ def _tool_lint_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextCont
         raise TypeError("rule_yaml must be provided as a string")
 
     LOGGER.info("Received lint request for WAF rule")
-    return _lint_waf_rule(rule_yaml)
+    return lint_waf_rule(rule_yaml)
 
 
 def _tool_deploy_waf_rule(_: dict[str, Any] | None) -> list[types.TextContent]:
