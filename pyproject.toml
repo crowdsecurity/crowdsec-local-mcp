@@ -28,6 +28,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "basedpyright>=1.25.0",
+    "pytest>=8.3.0",
     "ruff>=0.9.3",
     "types-pyyaml>=6.0.12.20241230",
     "types-requests>=2.32.0.20241016",
