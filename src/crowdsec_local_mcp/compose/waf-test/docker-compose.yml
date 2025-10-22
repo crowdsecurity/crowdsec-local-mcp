@@ -13,8 +13,6 @@ services:
       # Ensure the local API stays accessible for the nginx bouncer.
       - DISABLE_LOCAL_API=false
       - DISABLE_ONLINE_API=true
-      # Turn on AppSec mode inside the CrowdSec container.
-      - ENABLE_APPSEC=1
     volumes:
       # Persist CrowdSec data (buckets, alerts, etc.) between restarts.
       - crowdsec-data:/var/lib/crowdsec/data
