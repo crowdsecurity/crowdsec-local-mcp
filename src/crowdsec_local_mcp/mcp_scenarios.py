@@ -17,6 +17,7 @@ SCENARIO_PROMPT_FILE = PROMPTS_DIR / "prompt-scenario.txt"
 SCENARIO_EXAMPLES_FILE = PROMPTS_DIR / "prompt-scenario-examples.txt"
 SCENARIO_SCHEMA_FILE = SCRIPT_DIR / "yaml-schemas" / "scenario_schema.yaml"
 SCENARIO_DEPLOY_PROMPT_FILE = PROMPTS_DIR / "prompt-scenario-deploy.txt"
+SCENARIO_EXPR_HELPERS_PROMPT_FILE = PROMPTS_DIR / "prompt-expr-helpers.txt"
 SCENARIO_COMPOSE_DIR = SCRIPT_DIR / "compose" / "scenario-test"
 SCENARIO_COMPOSE_FILE = SCENARIO_COMPOSE_DIR / "docker-compose.yml"
 SCENARIO_PROJECT_NAME = "crowdsec-mcp-scenario"
@@ -97,6 +98,32 @@ def _tool_get_scenario_examples(_: dict[str, Any] | None) -> list[types.TextCont
             types.TextContent(
                 type="text",
                 text=f"Error reading scenario examples: {exc!s}",
+            )
+        ]
+    
+def _tool_get_expr_helpers(_: dict[str, Any] | None) -> list[types.TextContent]:
+    try:
+        LOGGER.info("Serving scenario expression helpers bundle")
+        return [
+            types.TextContent(
+                type="text",
+                text=_read_text(SCENARIO_EXPR_HELPERS_PROMPT_FILE),
+            )
+        ]
+    except FileNotFoundError:
+        LOGGER.error("Scenario expression helpers missing at %s", SCENARIO_EXPR_HELPERS_PROMPT_FILE)
+        return [
+            types.TextContent(
+                type="text",
+                text="Error: Scenario expression helpers file not found.",
+            )
+        ]
+    except Exception as exc:
+        LOGGER.error("Error reading scenario expression helpers: %s", exc)
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Error reading scenario expression helpers: {exc!s}",
             )
         ]
 
@@ -720,6 +747,7 @@ SCENARIO_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "explain_scenario": _tool_explain_scenario,
     "manage_scenario_stack": _tool_manage_scenario_stack,
     "test_scenario": _tool_test_scenario,
+    "get_scenario_expr_helpers": _tool_get_expr_helpers,
 }
 
 SCENARIO_TOOLS: list[types.Tool] = [
@@ -735,6 +763,15 @@ SCENARIO_TOOLS: list[types.Tool] = [
     types.Tool(
         name="get_scenario_examples",
         description="Retrieve example CrowdSec scenarios and annotations",
+        inputSchema={
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="get_scenario_expr_helpers",
+        description="Retrieve helper expressions for CrowdSec scenario authoring",
         inputSchema={
             "type": "object",
             "properties": {},
@@ -880,12 +917,19 @@ SCENARIO_RESOURCES: list[types.Resource] = [
         description="Guidance for packaging and deploying CrowdSec scenarios to local or hub environments",
         mimeType="text/plain",
     ),
+    types.Resource(
+        uri="file://prompts/prompt-expr-helpers.txt",
+        name="Scenario Expression Helpers",
+        description="List of supported expression helpers when writing CrowdSec scenarios",
+        mimeType="text/plain",
+    ),
 ]
 
 SCENARIO_RESOURCE_READERS: dict[str, Callable[[], str]] = {
     "file://prompts/prompt-scenario.txt": lambda: _read_text(SCENARIO_PROMPT_FILE),
     "file://prompts/prompt-scenario-examples.txt": lambda: _read_text(SCENARIO_EXAMPLES_FILE),
     "file://prompts/prompt-scenario-deploy.txt": lambda: _read_text(SCENARIO_DEPLOY_PROMPT_FILE),
+    "file://prompts/prompt-expr-helpers.txt": lambda: _read_text(SCENARIO_EXPR_HELPERS_PROMPT_FILE),
 }
 
 REGISTRY.register_tools(SCENARIO_TOOL_HANDLERS, SCENARIO_TOOLS)
