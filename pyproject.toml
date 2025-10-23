@@ -62,7 +62,7 @@ write_to_template = "__version__ = \"{version}\"\n"
 fallback_version = "0.0.0"
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py312"
 line-length = 193
 #fix = true
 #unsafe-fixes = false
@@ -116,7 +116,7 @@ max-args = 10 #Marco <3
 max-complexity = 33
 
 [tool.basedpyright]
-pythonVersion = "3.8"
+pythonVersion = "3.12"
 reportAny = "none"
 reportArgumentType = "none"
 reportConstantRedefinition = "none"
