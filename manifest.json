@@ -1,0 +1,72 @@
+{
+  "manifest_version": "0.2",
+  "name": "crowdsec-local-mcp",
+  "version": "1.0.0",
+  "description": "Helps CrowdSec users to write, test and deploy WAF rules, scenarios, parsers etc.",
+  "long_description": "Provide tools and prompts to help CrowdSec users to write, test and deploy WAF rules, scenarios, parsers etc. in an easy way.",
+  "author": {
+    "name": "CrowdSec",
+    "email": "crowdsec-local-mcp@crowdsec.net",
+    "url": "https://www.crowdsec.net/"
+  },
+  "homepage": "https://www.crowdsec.net/",
+  "documentation": "https://doc.crowdsec.net/",
+  "icon": "./crowdsec_logo.png",
+  "server": {
+    "type": "python",
+    "entry_point": "src/crowdsec_local_mcp/__main__.py",
+    "mcp_config": {
+      "command": "python",
+      "args": [
+        "${__dirname}/src/crowdsec_local_mcp/__main__.py"
+      ],
+      "env": {
+        "PYTHONPATH": "${__dirname}/server/lib"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "get_waf_prompt",
+      "description": "xyz"
+    },
+    {
+      "name": "another_tool",
+      "description": "xyzbis"
+    }
+  ],
+  "tools_generated": true,
+  "prompts": [
+    {
+      "name": "prompt_something",
+      "description": "something something",
+      "arguments": [
+        "argument_prompt"
+      ],
+      "text": "something something ${arguments.name}"
+    }
+  ],
+  "prompts_generated": true,
+  "compatibility": {
+    "runtimes": {
+      "python": ">=3.12"
+    }
+  },
+  "keywords": [
+    "crowdsec",
+    "foss",
+    "waf",
+    "web application firewall",
+    "appsec",
+    "scenario",
+    "parser",
+    "grok",
+    "yaml",
+    "security engine"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crowdsecurity/crowdsec-local-mcp"
+  }
+}
