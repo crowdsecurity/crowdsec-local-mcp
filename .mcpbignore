@@ -1,0 +1,8 @@
+.venv/*
+dist/*
+.git/*
+.github/*
+src/crowdsec_local_mcp.egg-info/*
+src/crowdsec_local_mcp/__pycache__/*
+src/crowdsec_local_mcp/cached-exploits/*
+tests/__pycache__/*
