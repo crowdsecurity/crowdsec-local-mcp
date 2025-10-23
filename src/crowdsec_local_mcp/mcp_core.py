@@ -1,4 +1,6 @@
 import logging
+import shutil
+import subprocess
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
@@ -13,6 +15,7 @@ from mcp.server.models import InitializationOptions
 SCRIPT_DIR = Path(__file__).parent
 PROMPTS_DIR = SCRIPT_DIR / "prompts"
 LOG_FILE_PATH = Path(tempfile.gettempdir()) / "crowdsec-mcp.log"
+_DOCKER_CLI_CHECK: bool | None = None
 
 
 def _configure_logger() -> logging.Logger:
@@ -102,6 +105,54 @@ class MCPRegistry:
 
 
 REGISTRY = MCPRegistry()
+
+
+def ensure_docker_cli() -> None:
+    """Ensure the Docker CLI is available and executable."""
+    global _DOCKER_CLI_CHECK
+    if _DOCKER_CLI_CHECK:
+        return
+
+    docker_path = shutil.which("docker")
+    if not docker_path:
+        LOGGER.error("Docker executable not found on PATH")
+        raise RuntimeError(
+            "Docker is required but the `docker` executable was not found on PATH. "
+            "Install Docker Desktop or Docker Engine and ensure the `docker` CLI is accessible."
+        )
+
+    try:
+        subprocess.run(
+            ["docker", "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        LOGGER.error("Docker executable missing when verifying CLI: %s", exc)
+        raise RuntimeError(
+            "Docker is required but the `docker` executable could not be executed. "
+            "Install Docker and ensure the CLI is on PATH."
+        ) from exc
+    except PermissionError as exc:
+        LOGGER.error("Permission error while invoking docker CLI: %s", exc)
+        raise RuntimeError(
+            "Docker was found but is not executable by the current process. "
+            "Adjust permissions or run as a user allowed to execute Docker commands."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        LOGGER.error("Docker CLI check failed: %s", detail or exc)
+        hint = (
+            "Docker appears to be installed but `docker --version` failed. "
+            "Ensure the Docker daemon is installed correctly and the current user can execute Docker commands."
+        )
+        if detail:
+            hint = f"{hint} Details: {detail}"
+        raise RuntimeError(hint) from exc
+
+    LOGGER.info("Docker CLI detected at %s", docker_path)
+    _DOCKER_CLI_CHECK = True
 
 
 @server.list_tools()

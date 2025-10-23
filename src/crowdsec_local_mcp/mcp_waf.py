@@ -13,7 +13,14 @@ import yaml
 
 from mcp import types
 
-from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
+from .mcp_core import (
+    LOGGER,
+    PROMPTS_DIR,
+    REGISTRY,
+    SCRIPT_DIR,
+    ToolHandler,
+    ensure_docker_cli,
+)
 
 WAF_TOP_LEVEL_PROMPT_FILE = PROMPTS_DIR / "prompt-waf-top-level.txt"
 WAF_PROMPT_FILE = PROMPTS_DIR / "prompt-waf.txt"
@@ -63,7 +70,9 @@ def _detect_compose_command() -> list[str]:
     if _COMPOSE_CMD_CACHE is not None:
         return _COMPOSE_CMD_CACHE
 
+    ensure_docker_cli()
     candidates = [["docker", "compose"], ["docker-compose"]]
+    compose_errors: list[str] = []
 
     for candidate in candidates:
         try:
@@ -78,15 +87,31 @@ def _detect_compose_command() -> list[str]:
                 LOGGER.info("Detected compose command: %s", " ".join(candidate))
                 return candidate
         except FileNotFoundError:
+            compose_errors.append(f"`{' '.join(candidate)}` command not found")
             continue
-        except subprocess.CalledProcessError:
+        except PermissionError as exc:
+            compose_errors.append(
+                f"`{' '.join(candidate)}` is present but not executable: {exc}"
+            )
+            continue
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip()
+            compose_errors.append(
+                f"`{' '.join(candidate)}` failed to run: {detail or 'unknown error'}"
+            )
             continue
 
+    detail_suffix = (
+        f" Details: {'; '.join(compose_errors)}" if compose_errors else ""
+    )
     LOGGER.error(
-        "Failed to detect Docker Compose command; ensure Docker is installed and available"
+        "Failed to detect Docker Compose command; ensure Docker is installed and available%s",
+        detail_suffix,
     )
     raise RuntimeError(
-        "Docker Compose is required but was not found. Install Docker and ensure `docker compose` or `docker-compose` is available."
+        "Docker Compose is required but could not be executed. Install Docker Desktop or Docker Engine and ensure "
+        "`docker compose` or `docker-compose` is available on PATH."
+        + detail_suffix
     )
 
 
@@ -141,22 +166,40 @@ def _run_compose_command(
             capture_output=capture_output,
             text=True,
         )
-    except FileNotFoundError as error:
+    except (FileNotFoundError, PermissionError) as error:
         LOGGER.error("Compose command failed to start: %s", error)
-        raise RuntimeError(f"Failed to run {' '.join(base_cmd)}: {error}") from error
+        raise RuntimeError(
+            "Docker Compose is required but could not be executed. "
+            "Install Docker and ensure the current user can run `docker compose` commands."
+        ) from error
     except subprocess.CalledProcessError as error:
         stdout = (error.stdout or "").strip()
         stderr = (error.stderr or "").strip()
         combined = "\n".join(part for part in (stdout, stderr) if part)
         if not combined:
             combined = str(error)
+        lower_combined = combined.lower()
+        hint = ""
+        if any(
+            token in lower_combined
+            for token in (
+                "permission denied",
+                "docker daemon",
+                "got permission denied",
+                "is the docker daemon running",
+                "cannot connect to the docker daemon",
+            )
+        ):
+            hint = (
+                "\nHint: Ensure the Docker daemon is running and that the current user has permission to run Docker commands."
+            )
         LOGGER.error(
             "Compose command exited with %s: %s",
             error.returncode,
             combined.splitlines()[0] if combined else "no output",
         )
         raise RuntimeError(
-            f"docker compose {' '.join(args)} failed (exit code {error.returncode}):\n{combined}"
+            f"docker compose {' '.join(args)} failed (exit code {error.returncode}):\n{combined}{hint}"
         ) from error
 
 
@@ -238,6 +281,8 @@ def _run_nuclei_container(
     rel_template = template_path.relative_to(workspace)
     container_template_path = f"/nuclei/{rel_template.as_posix()}"
 
+    ensure_docker_cli()
+
     command = [
         "docker",
         "run",
@@ -269,7 +314,18 @@ def _run_nuclei_container(
         )
     except FileNotFoundError as exc:
         LOGGER.error("Docker binary not found while launching nuclei container")
-        return (False, f"Docker is required to run nuclei tests but was not found: {exc}")
+        return (
+            False,
+            "Docker is required but the `docker` executable was not found on PATH. "
+            "Install Docker Desktop or Docker Engine and ensure the `docker` CLI is accessible.",
+        )
+    except PermissionError as exc:
+        LOGGER.error("Docker binary present but not executable: %s", exc)
+        return (
+            False,
+            "Docker was found but is not executable by the current process. "
+            "Adjust permissions or run as a user allowed to execute Docker commands.",
+        )
     except subprocess.TimeoutExpired:
         LOGGER.error("Nuclei container timed out after %s seconds", timeout)
         return (
@@ -288,9 +344,25 @@ def _run_nuclei_container(
 
     if result.returncode != 0:
         LOGGER.error("Nuclei container exited with code %s", result.returncode)
+        combined_lower = f"{stdout}\n{stderr}".lower()
+        hint = ""
+        if any(
+            token in combined_lower
+            for token in (
+                "permission denied",
+                "docker daemon",
+                "got permission denied",
+                "is the docker daemon running",
+                "cannot connect to the docker daemon",
+            )
+        ):
+            hint = (
+                "\nHint: Ensure the Docker daemon is running and that the current user can run Docker commands."
+            )
         failure = (
             f"Nuclei container exited with status {result.returncode}."
             + (f"\n\n{detail_text}" if detail_text else "")
+            + hint
         )
         return (False, failure)
 
@@ -427,11 +499,11 @@ def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT,
         )
-    except FileNotFoundError:
+    except (FileNotFoundError, PermissionError):
         LOGGER.error("Failed to launch docker compose process")
         return (
             None,
-            "Docker Compose is required but could not be executed. Ensure Docker is installed and available.",
+            "Docker Compose is required but could not be executed. Ensure Docker is installed and the current user can run Docker commands.",
         )
 
     _COMPOSE_STACK_PROCESS = process
