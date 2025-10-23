@@ -129,22 +129,22 @@ def ensure_docker_cli() -> None:
             text=True,
         )
     except FileNotFoundError as exc:
-        LOGGER.error("Docker executable missing when verifying CLI: %s", exc)
+        LOGGER.exception("Docker executable missing when verifying CLI: %s", exc)
         raise RuntimeError(
             "Docker is required but the `docker` executable could not be executed. "
             "Install Docker and ensure the CLI is on PATH."
         ) from exc
     except PermissionError as exc:
-        LOGGER.error("Permission error while invoking docker CLI: %s", exc)
+        LOGGER.exception("Permission error while invoking docker CLI: %s", exc)
         raise RuntimeError(
             "Docker was found but is not executable by the current process. "
             "Adjust permissions or run as a user allowed to execute Docker commands."
         ) from exc
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or "").strip()
-        LOGGER.error("Docker CLI check failed: %s", detail or exc)
+        LOGGER.exception("Docker CLI check failed: %s", detail or exc)
         hint = (
-            "Docker appears to be installed but `docker --version` failed. "
+            "Docker appears to be installed but `docker info` failed. "
             "Ensure the Docker daemon is installed correctly and the current user can execute Docker commands."
         )
         if detail:
