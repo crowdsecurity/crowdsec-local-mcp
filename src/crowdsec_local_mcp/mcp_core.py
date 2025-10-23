@@ -123,7 +123,7 @@ def ensure_docker_cli() -> None:
 
     try:
         subprocess.run(
-            ["docker", "--version"],
+            ["docker", "info"],
             check=True,
             capture_output=True,
             text=True,
