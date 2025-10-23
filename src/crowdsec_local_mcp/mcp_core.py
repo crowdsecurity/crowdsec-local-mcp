@@ -115,7 +115,7 @@ def ensure_docker_cli() -> None:
 
     docker_path = shutil.which("docker")
     if not docker_path:
-        LOGGER.error("Docker executable not found on PATH")
+        # LOGGER.error("Docker executable not found on PATH")
         raise RuntimeError(
             "Docker is required but the `docker` executable was not found on PATH. "
             "Install Docker Desktop or Docker Engine and ensure the `docker` CLI is accessible."
@@ -129,20 +129,20 @@ def ensure_docker_cli() -> None:
             text=True,
         )
     except FileNotFoundError as exc:
-        LOGGER.exception("Docker executable missing when verifying CLI: %s", exc)
+        # LOGGER.exception("Docker executable missing when verifying CLI: %s", exc)
         raise RuntimeError(
             "Docker is required but the `docker` executable could not be executed. "
             "Install Docker and ensure the CLI is on PATH."
         ) from exc
     except PermissionError as exc:
-        LOGGER.exception("Permission error while invoking docker CLI: %s", exc)
+        # LOGGER.exception("Permission error while invoking docker CLI: %s", exc)
         raise RuntimeError(
             "Docker was found but is not executable by the current process. "
             "Adjust permissions or run as a user allowed to execute Docker commands."
         ) from exc
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or "").strip()
-        LOGGER.exception("Docker CLI check failed: %s", detail or exc)
+        # LOGGER.exception("Docker CLI check failed: %s", detail or exc)
         hint = (
             "Docker appears to be installed but `docker info` failed. "
             "Ensure the Docker daemon is installed correctly and the current user can execute Docker commands."
