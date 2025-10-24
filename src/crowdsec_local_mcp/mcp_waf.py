@@ -19,7 +19,6 @@ from .mcp_core import (
     REGISTRY,
     SCRIPT_DIR,
     ToolHandler,
-    docker_permission_hint,
     ensure_docker_cli,
     ensure_docker_compose_cli,
 )
@@ -128,14 +127,13 @@ def _run_compose_command(
         combined = "\n".join(part for part in (stdout, stderr) if part)
         if not combined:
             combined = str(error)
-        hint = docker_permission_hint(stdout, stderr)
         LOGGER.error(
             "Compose command exited with %s: %s",
             error.returncode,
             combined.splitlines()[0] if combined else "no output",
         )
         raise RuntimeError(
-            f"docker compose {' '.join(args)} failed (exit code {error.returncode}):\n{combined}{hint}"
+            f"docker compose {' '.join(args)} failed (exit code {error.returncode}):\n{combined}"
         ) from error
 
 
@@ -266,11 +264,9 @@ def _run_nuclei_container(
 
     if result.returncode != 0:
         LOGGER.error("Nuclei container exited with code %s", result.returncode)
-        hint = docker_permission_hint(stdout, stderr)
         failure = (
             f"Nuclei container exited with status {result.returncode}."
             + (f"\n\n{detail_text}" if detail_text else "")
-            + hint
         )
         return (False, failure)
 
@@ -1302,7 +1298,7 @@ WAF_TOOLS: list[types.Tool] = [
     ),
     types.Tool(
         name="manage_waf_stack",
-        description="Start or stop the Docker-based CrowdSec AppSec test stack so the rule can be exercised with allowed and blocked requests",
+        description="Start or stop the Docker-based CrowdSec AppSec test stack so the rule can be exercised with allowed and blocked requests. If this action fails to start because docker isn't available or the user doesn't have the permissions, indicate to the user he should setup docker to take full advantage of the feature.",
         inputSchema={
             "type": "object",
             "properties": {
