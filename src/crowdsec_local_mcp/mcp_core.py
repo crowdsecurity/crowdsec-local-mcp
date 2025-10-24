@@ -1,4 +1,6 @@
 import logging
+import shutil
+import subprocess
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
@@ -13,6 +15,8 @@ from mcp.server.models import InitializationOptions
 SCRIPT_DIR = Path(__file__).parent
 PROMPTS_DIR = SCRIPT_DIR / "prompts"
 LOG_FILE_PATH = Path(tempfile.gettempdir()) / "crowdsec-mcp.log"
+_DOCKER_CLI_CHECK: bool | None = None
+_DOCKER_COMPOSE_CMD: list[str] | None = None
 
 
 def _configure_logger() -> logging.Logger:
@@ -102,6 +106,96 @@ class MCPRegistry:
 
 
 REGISTRY = MCPRegistry()
+
+
+def ensure_docker_cli() -> None:
+    """Ensure the Docker CLI is available and executable."""
+    global _DOCKER_CLI_CHECK
+    if _DOCKER_CLI_CHECK:
+        return
+
+    docker_path = shutil.which("docker")
+    if not docker_path:
+        raise RuntimeError(
+            "Docker is required but the `docker` executable was not found on PATH. "
+            "Install Docker Desktop or Docker Engine and ensure the `docker` CLI is accessible."
+        )
+
+    try:
+        subprocess.run(
+            ["docker", "info"], #noqa: S607
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "Docker is required but the `docker` executable could not be executed. "
+            "Install Docker and ensure the CLI is on PATH."
+        ) from exc
+    except PermissionError as exc:
+        raise RuntimeError(
+            "Docker was found but is not executable by the current process. "
+            "Adjust permissions or run as a user allowed to execute Docker commands."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        hint = (
+            "Docker appears to be installed but `docker info` failed. "
+            "Ensure the Docker daemon is installed correctly and the current user can execute Docker commands."
+        )
+        if detail:
+            hint = f"{hint} Details: {detail}"
+        raise RuntimeError(hint) from exc
+
+    LOGGER.info("Docker CLI detected at %s", docker_path)
+    _DOCKER_CLI_CHECK = True
+
+
+def ensure_docker_compose_cli() -> list[str]:
+    """Ensure a Docker Compose CLI is available and executable; return the command."""
+    global _DOCKER_COMPOSE_CMD
+    if _DOCKER_COMPOSE_CMD is not None:
+        return _DOCKER_COMPOSE_CMD
+
+    ensure_docker_cli()
+
+    candidates = [["docker", "compose"], ["docker-compose"]]
+    errors: list[str] = []
+
+    for candidate in candidates:
+        command_display = " ".join(candidate)
+        try:
+            result = subprocess.run(
+                candidate + ["version"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            errors.append(f"`{command_display}` command not found: {exc}")
+            continue
+        except PermissionError as exc:
+            errors.append(
+                f"`{command_display}` is present but not executable by the current user: {exc}"
+            )
+            continue
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip()
+            message = f"`{command_display}` failed to run: {detail or 'unknown error'}"
+            errors.append(message)
+            continue
+
+        if result.returncode == 0:
+            _DOCKER_COMPOSE_CMD = candidate
+            LOGGER.info("Docker Compose CLI detected: %s", command_display)
+            return candidate
+
+    detail_suffix = f" Details: {'; '.join(errors)}" if errors else ""
+    raise RuntimeError(
+        "Docker Compose is required but could not be executed. Install Docker Desktop or Docker Engine and ensure "
+        "`docker compose` or `docker-compose` is available on PATH." + detail_suffix
+    )
 
 
 @server.list_tools()
