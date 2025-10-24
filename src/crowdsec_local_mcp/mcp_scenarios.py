@@ -99,7 +99,7 @@ def _tool_get_scenario_examples(_: dict[str, Any] | None) -> list[types.TextCont
                 text=f"Error reading scenario examples: {exc!s}",
             )
         ]
-    
+
 def _tool_get_expr_helpers(_: dict[str, Any] | None) -> list[types.TextContent]:
     try:
         LOGGER.info("Serving scenario expression helpers bundle")
