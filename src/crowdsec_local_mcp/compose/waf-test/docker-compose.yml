@@ -3,6 +3,7 @@ version: "3.9"
 services:
   crowdsec:
     image: crowdsecurity/crowdsec:latest
+    pull_policy: always
     hostname: crowdsec
     container_name: crowdsec-appsec
     restart: "no"
