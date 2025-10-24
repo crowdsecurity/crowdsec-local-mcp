@@ -13,7 +13,15 @@ import yaml
 
 from mcp import types
 
-from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
+from .mcp_core import (
+    LOGGER,
+    PROMPTS_DIR,
+    REGISTRY,
+    SCRIPT_DIR,
+    ToolHandler,
+    ensure_docker_cli,
+    ensure_docker_compose_cli,
+)
 
 WAF_TOP_LEVEL_PROMPT_FILE = PROMPTS_DIR / "prompt-waf-top-level.txt"
 WAF_PROMPT_FILE = PROMPTS_DIR / "prompt-waf.txt"
@@ -53,45 +61,11 @@ DEFAULT_EXPLOIT_TARGET_DIR = SCRIPT_DIR / "cached-exploits"
 CASE_SENSITIVE_MATCH_TYPES = ["regex", "contains", "startsWith", "endsWith", "equals"]
 SQL_KEYWORD_INDICATORS = ["union", "select", "insert", "update", "delete", "drop"]
 
-_COMPOSE_CMD_CACHE: list[str] | None = None
 _COMPOSE_STACK_PROCESS: subprocess.Popen | None = None
 
 
-def _detect_compose_command() -> list[str]:
-    """Detect whether docker compose or docker-compose is available."""
-    global _COMPOSE_CMD_CACHE
-    if _COMPOSE_CMD_CACHE is not None:
-        return _COMPOSE_CMD_CACHE
-
-    candidates = [["docker", "compose"], ["docker-compose"]]
-
-    for candidate in candidates:
-        try:
-            result = subprocess.run(
-                candidate + ["version"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                _COMPOSE_CMD_CACHE = candidate
-                LOGGER.info("Detected compose command: %s", " ".join(candidate))
-                return candidate
-        except FileNotFoundError:
-            continue
-        except subprocess.CalledProcessError:
-            continue
-
-    LOGGER.error(
-        "Failed to detect Docker Compose command; ensure Docker is installed and available"
-    )
-    raise RuntimeError(
-        "Docker Compose is required but was not found. Install Docker and ensure `docker compose` or `docker-compose` is available."
-    )
-
-
 def _collect_compose_logs(services: list[str] | None = None, tail_lines: int = 200) -> str:
-    cmd = _detect_compose_command() + [
+    cmd = ensure_docker_compose_cli() + [
         "-p",
         WAF_TEST_PROJECT_NAME,
         "-f",
@@ -129,7 +103,7 @@ def _run_compose_command(
     args: list[str], capture_output: bool = True, check: bool = True
 ) -> subprocess.CompletedProcess:
     """Run a docker compose command inside the WAF test harness directory."""
-    base_cmd = _detect_compose_command()
+    base_cmd = ensure_docker_compose_cli()
     full_cmd = base_cmd + ["-p", WAF_TEST_PROJECT_NAME, "-f", str(WAF_TEST_COMPOSE_FILE)] + args
     LOGGER.info("Executing compose command: %s", " ".join(full_cmd))
 
@@ -141,9 +115,12 @@ def _run_compose_command(
             capture_output=capture_output,
             text=True,
         )
-    except FileNotFoundError as error:
+    except (FileNotFoundError, PermissionError) as error:
         LOGGER.error("Compose command failed to start: %s", error)
-        raise RuntimeError(f"Failed to run {' '.join(base_cmd)}: {error}") from error
+        raise RuntimeError(
+            "Docker Compose is required but could not be executed. "
+            "Install Docker and ensure the current user can run `docker compose` commands."
+        ) from error
     except subprocess.CalledProcessError as error:
         stdout = (error.stdout or "").strip()
         stderr = (error.stderr or "").strip()
@@ -238,6 +215,8 @@ def _run_nuclei_container(
     rel_template = template_path.relative_to(workspace)
     container_template_path = f"/nuclei/{rel_template.as_posix()}"
 
+    ensure_docker_cli()
+
     command = [
         "docker",
         "run",
@@ -267,9 +246,6 @@ def _run_nuclei_container(
             timeout=timeout,
             check=False,
         )
-    except FileNotFoundError as exc:
-        LOGGER.error("Docker binary not found while launching nuclei container")
-        return (False, f"Docker is required to run nuclei tests but was not found: {exc}")
     except subprocess.TimeoutExpired:
         LOGGER.error("Nuclei container timed out after %s seconds", timeout)
         return (
@@ -410,7 +386,7 @@ def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
         _teardown_compose_stack(check=False)
         return (None, f"{error}{log_section}")
 
-    compose_base = _detect_compose_command() + [
+    compose_base = ensure_docker_compose_cli() + [
         "-p",
         WAF_TEST_PROJECT_NAME,
         "-f",
@@ -427,11 +403,11 @@ def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT,
         )
-    except FileNotFoundError:
+    except (FileNotFoundError, PermissionError):
         LOGGER.error("Failed to launch docker compose process")
         return (
             None,
-            "Docker Compose is required but could not be executed. Ensure Docker is installed and available.",
+            "Docker Compose is required but could not be executed. Ensure Docker is installed and the current user can run Docker commands.",
         )
 
     _COMPOSE_STACK_PROCESS = process
@@ -1249,7 +1225,8 @@ WAF_TOOLS: list[types.Tool] = [
     ),
     types.Tool(
         name="run_waf_tests",
-        description="Start the WAF harness and execute the provided nuclei test template against it",
+        description="Start the WAF harness and execute the provided nuclei test template against it."
+        " If this action fails because docker isn't present or cannot be run, prompt the user to set it up manually.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -1322,7 +1299,8 @@ WAF_TOOLS: list[types.Tool] = [
     ),
     types.Tool(
         name="manage_waf_stack",
-        description="Start or stop the Docker-based CrowdSec AppSec test stack so the rule can be exercised with allowed and blocked requests",
+        description="Start or stop the Docker-based CrowdSec AppSec test stack so the rule can be exercised with allowed and blocked requests."
+        " If this action fails because docker isn't present or cannot be run, prompt the user to set it up manually.",
         inputSchema={
             "type": "object",
             "properties": {

@@ -3,6 +3,7 @@ version: "3.9"
 services:
   crowdsec:
     image: crowdsecurity/crowdsec:latest
+    pull_policy: always
     hostname: crowdsec
     container_name: crowdsec-appsec
     restart: "no"
@@ -11,10 +12,8 @@ services:
       - /usr/local/bin/init-bouncer.sh
     environment:
       # Ensure the local API stays accessible for the nginx bouncer.
-      - DISABLE_LOCAL_API=0
-      - DISABLE_ONLINE_API=1
-      # Turn on AppSec mode inside the CrowdSec container.
-      - ENABLE_APPSEC=1
+      - DISABLE_LOCAL_API=false
+      - DISABLE_ONLINE_API=true
     volumes:
       # Persist CrowdSec data (buckets, alerts, etc.) between restarts.
       - crowdsec-data:/var/lib/crowdsec/data
@@ -43,7 +42,7 @@ services:
     command:
       - openresty
       - -g
-      - 'daemon off;'
+      - "daemon off;"
     volumes:
       - ./nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
       # Site config enabling the CrowdSec module and proxying to the backend.
