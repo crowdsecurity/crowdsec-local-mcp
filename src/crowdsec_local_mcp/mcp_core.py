@@ -16,6 +16,14 @@ SCRIPT_DIR = Path(__file__).parent
 PROMPTS_DIR = SCRIPT_DIR / "prompts"
 LOG_FILE_PATH = Path(tempfile.gettempdir()) / "crowdsec-mcp.log"
 _DOCKER_CLI_CHECK: bool | None = None
+_DOCKER_COMPOSE_CMD: list[str] | None = None
+_DOCKER_PERMISSION_TOKENS = (
+    "permission denied",
+    "docker daemon",
+    "got permission denied",
+    "is the docker daemon running",
+    "cannot connect to the docker daemon",
+)
 
 
 def _configure_logger() -> logging.Logger:
@@ -107,6 +115,18 @@ class MCPRegistry:
 REGISTRY = MCPRegistry()
 
 
+def docker_permission_hint(*outputs: str) -> str:
+    """Return a standard hint if Docker output indicates permission/daemon issues."""
+    combined = "\n".join(part for part in outputs if part).lower()
+    if not combined:
+        return ""
+    if any(token in combined for token in _DOCKER_PERMISSION_TOKENS):
+        return (
+            "\nHint: Ensure the Docker daemon is running and that the current user has permission to run Docker commands."
+        )
+    return ""
+
+
 def ensure_docker_cli() -> None:
     """Ensure the Docker CLI is available and executable."""
     global _DOCKER_CLI_CHECK
@@ -149,6 +169,54 @@ def ensure_docker_cli() -> None:
 
     LOGGER.info("Docker CLI detected at %s", docker_path)
     _DOCKER_CLI_CHECK = True
+
+
+def ensure_docker_compose_cli() -> list[str]:
+    """Ensure a Docker Compose CLI is available and executable; return the command."""
+    global _DOCKER_COMPOSE_CMD
+    if _DOCKER_COMPOSE_CMD is not None:
+        return _DOCKER_COMPOSE_CMD
+
+    ensure_docker_cli()
+
+    candidates = [["docker", "compose"], ["docker-compose"]]
+    errors: list[str] = []
+
+    for candidate in candidates:
+        command_display = " ".join(candidate)
+        try:
+            result = subprocess.run(
+                candidate + ["version"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            errors.append(f"`{command_display}` command not found: {exc}")
+            continue
+        except PermissionError as exc:
+            errors.append(
+                f"`{command_display}` is present but not executable: {exc}\n"
+                "Hint: Adjust permissions or execute the command as a user allowed to run Docker."
+            )
+            continue
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip()
+            hint = docker_permission_hint(detail)
+            message = f"`{command_display}` failed to run: {detail or 'unknown error'}{hint}"
+            errors.append(message)
+            continue
+
+        if result.returncode == 0:
+            _DOCKER_COMPOSE_CMD = candidate
+            LOGGER.info("Docker Compose CLI detected: %s", command_display)
+            return candidate
+
+    detail_suffix = f" Details: {'; '.join(errors)}" if errors else ""
+    raise RuntimeError(
+        "Docker Compose is required but could not be executed. Install Docker Desktop or Docker Engine and ensure "
+        "`docker compose` or `docker-compose` is available on PATH." + detail_suffix
+    )
 
 
 @server.list_tools()

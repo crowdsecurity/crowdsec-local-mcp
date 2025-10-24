@@ -19,7 +19,9 @@ from .mcp_core import (
     REGISTRY,
     SCRIPT_DIR,
     ToolHandler,
+    docker_permission_hint,
     ensure_docker_cli,
+    ensure_docker_compose_cli,
 )
 
 WAF_TOP_LEVEL_PROMPT_FILE = PROMPTS_DIR / "prompt-waf-top-level.txt"
@@ -60,63 +62,11 @@ DEFAULT_EXPLOIT_TARGET_DIR = SCRIPT_DIR / "cached-exploits"
 CASE_SENSITIVE_MATCH_TYPES = ["regex", "contains", "startsWith", "endsWith", "equals"]
 SQL_KEYWORD_INDICATORS = ["union", "select", "insert", "update", "delete", "drop"]
 
-_COMPOSE_CMD_CACHE: list[str] | None = None
 _COMPOSE_STACK_PROCESS: subprocess.Popen | None = None
 
 
-def _detect_compose_command() -> list[str]:
-    """Detect whether docker compose or docker-compose is available."""
-    global _COMPOSE_CMD_CACHE
-    if _COMPOSE_CMD_CACHE is not None:
-        return _COMPOSE_CMD_CACHE
-
-    ensure_docker_cli()
-    candidates = [["docker", "compose"], ["docker-compose"]]
-    compose_errors: list[str] = []
-
-    for candidate in candidates:
-        try:
-            result = subprocess.run(
-                candidate + ["version"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                _COMPOSE_CMD_CACHE = candidate
-                LOGGER.info("Detected compose command: %s", " ".join(candidate))
-                return candidate
-        except FileNotFoundError:
-            compose_errors.append(f"`{' '.join(candidate)}` command not found")
-            continue
-        except PermissionError as exc:
-            compose_errors.append(
-                f"`{' '.join(candidate)}` is present but not executable: {exc}"
-            )
-            continue
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or exc.stdout or str(exc)).strip()
-            compose_errors.append(
-                f"`{' '.join(candidate)}` failed to run: {detail or 'unknown error'}"
-            )
-            continue
-
-    detail_suffix = (
-        f" Details: {'; '.join(compose_errors)}" if compose_errors else ""
-    )
-    LOGGER.error(
-        "Failed to detect Docker Compose command; ensure Docker is installed and available%s",
-        detail_suffix,
-    )
-    raise RuntimeError(
-        "Docker Compose is required but could not be executed. Install Docker Desktop or Docker Engine and ensure "
-        "`docker compose` or `docker-compose` is available on PATH."
-        + detail_suffix
-    )
-
-
 def _collect_compose_logs(services: list[str] | None = None, tail_lines: int = 200) -> str:
-    cmd = _detect_compose_command() + [
+    cmd = ensure_docker_compose_cli() + [
         "-p",
         WAF_TEST_PROJECT_NAME,
         "-f",
@@ -154,7 +104,7 @@ def _run_compose_command(
     args: list[str], capture_output: bool = True, check: bool = True
 ) -> subprocess.CompletedProcess:
     """Run a docker compose command inside the WAF test harness directory."""
-    base_cmd = _detect_compose_command()
+    base_cmd = ensure_docker_compose_cli()
     full_cmd = base_cmd + ["-p", WAF_TEST_PROJECT_NAME, "-f", str(WAF_TEST_COMPOSE_FILE)] + args
     LOGGER.info("Executing compose command: %s", " ".join(full_cmd))
 
@@ -178,21 +128,7 @@ def _run_compose_command(
         combined = "\n".join(part for part in (stdout, stderr) if part)
         if not combined:
             combined = str(error)
-        lower_combined = combined.lower()
-        hint = ""
-        if any(
-            token in lower_combined
-            for token in (
-                "permission denied",
-                "docker daemon",
-                "got permission denied",
-                "is the docker daemon running",
-                "cannot connect to the docker daemon",
-            )
-        ):
-            hint = (
-                "\nHint: Ensure the Docker daemon is running and that the current user has permission to run Docker commands."
-            )
+        hint = docker_permission_hint(stdout, stderr)
         LOGGER.error(
             "Compose command exited with %s: %s",
             error.returncode,
@@ -312,20 +248,6 @@ def _run_nuclei_container(
             timeout=timeout,
             check=False,
         )
-    except FileNotFoundError as exc:
-        LOGGER.error("Docker binary not found while launching nuclei container")
-        return (
-            False,
-            "Docker is required but the `docker` executable was not found on PATH. "
-            "Install Docker Desktop or Docker Engine and ensure the `docker` CLI is accessible.",
-        )
-    except PermissionError as exc:
-        LOGGER.error("Docker binary present but not executable: %s", exc)
-        return (
-            False,
-            "Docker was found but is not executable by the current process. "
-            "Adjust permissions or run as a user allowed to execute Docker commands.",
-        )
     except subprocess.TimeoutExpired:
         LOGGER.error("Nuclei container timed out after %s seconds", timeout)
         return (
@@ -344,21 +266,7 @@ def _run_nuclei_container(
 
     if result.returncode != 0:
         LOGGER.error("Nuclei container exited with code %s", result.returncode)
-        combined_lower = f"{stdout}\n{stderr}".lower()
-        hint = ""
-        if any(
-            token in combined_lower
-            for token in (
-                "permission denied",
-                "docker daemon",
-                "got permission denied",
-                "is the docker daemon running",
-                "cannot connect to the docker daemon",
-            )
-        ):
-            hint = (
-                "\nHint: Ensure the Docker daemon is running and that the current user can run Docker commands."
-            )
+        hint = docker_permission_hint(stdout, stderr)
         failure = (
             f"Nuclei container exited with status {result.returncode}."
             + (f"\n\n{detail_text}" if detail_text else "")
@@ -482,7 +390,7 @@ def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
         _teardown_compose_stack(check=False)
         return (None, f"{error}{log_section}")
 
-    compose_base = _detect_compose_command() + [
+    compose_base = ensure_docker_compose_cli() + [
         "-p",
         WAF_TEST_PROJECT_NAME,
         "-f",
