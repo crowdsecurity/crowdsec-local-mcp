@@ -16,13 +16,22 @@
     "type": "python",
     "entry_point": "src/crowdsec_local_mcp/__main__.py",
     "mcp_config": {
-      "command": "uv",
+      "command": "${user_config.uv_path}",
       "args": [
         "run",
         "--project",
         "${__dirname}",
         "crowdsec-mcp"
       ]
+    }
+  },
+  "user_config": {
+    "uv_path": {
+      "type": "string",
+      "default": "uv",
+      "title": "Path to uv executable",
+      "description": "Path to the 'uv' executable used to run the server.",
+      "required": false
     }
   },
   "tools": [
