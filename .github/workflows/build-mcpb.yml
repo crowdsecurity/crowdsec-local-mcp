@@ -1,0 +1,36 @@
+name: Build MCPB Package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-mcpb:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build MCPB package
+        run: |
+          mkdir -p dist
+          npx --yes @anthropic-ai/mcpb pack --output dist/crowdsec-local-mcp.mcpb
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crowdsec-local-mcp.mcpb
+          path: dist/crowdsec-local-mcp.mcpb
+
+      - name: Attach package to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/crowdsec-local-mcp.mcpb
