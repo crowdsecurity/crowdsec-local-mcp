@@ -98,10 +98,7 @@
   "tools_generated": true,
   "prompts_generated": true,
   "compatibility": {
-    "uv": ">=0.5.0",
-    "runtimes": {
-      "python": ">=3.12"
-    }
+    "uv": ">=0.5.0"
   },
   "keywords": [
     "crowdsec",
