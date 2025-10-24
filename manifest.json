@@ -27,7 +27,7 @@
   },
   "user_config": {
     "uv_path": {
-      "type": "string",
+      "type": "file",
       "default": "uv",
       "title": "Path to uv executable",
       "description": "Path to the 'uv' executable used to run the server.",
