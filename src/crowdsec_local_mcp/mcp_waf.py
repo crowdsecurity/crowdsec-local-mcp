@@ -1225,7 +1225,8 @@ WAF_TOOLS: list[types.Tool] = [
     ),
     types.Tool(
         name="run_waf_tests",
-        description="Start the WAF harness and execute the provided nuclei test template against it. If this action fails because docker isn't present or cannot be run, prompt the user to set it up manually.",
+        description="Start the WAF harness and execute the provided nuclei test template against it."
+        " If this action fails because docker isn't present or cannot be run, prompt the user to set it up manually.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -1298,7 +1299,8 @@ WAF_TOOLS: list[types.Tool] = [
     ),
     types.Tool(
         name="manage_waf_stack",
-        description="Start or stop the Docker-based CrowdSec AppSec test stack so the rule can be exercised with allowed and blocked requests. If this action fails because docker isn't present or cannot be run, prompt the user to set it up manually.",
+        description="Start or stop the Docker-based CrowdSec AppSec test stack so the rule can be exercised with allowed and blocked requests."
+        " If this action fails because docker isn't present or cannot be run, prompt the user to set it up manually.",
         inputSchema={
             "type": "object",
             "properties": {
