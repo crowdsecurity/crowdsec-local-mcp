@@ -142,7 +142,7 @@ def ensure_docker_cli() -> None:
 
     try:
         subprocess.run(
-            ["docker", "info"],
+            ["docker", "info"], #noqa: S607
             check=True,
             capture_output=True,
             text=True,
