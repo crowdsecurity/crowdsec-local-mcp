@@ -3,6 +3,7 @@ services:
     image: crowdsecurity/crowdsec:latest
     hostname: crowdsec
     container_name: crowdsec-scenario-test
+    pull_policy: always
     restart: "no"
     environment:
       - DISABLE_ONLINE_API=true
