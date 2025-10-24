@@ -7,4 +7,4 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - generated during release
     __version__ = "0.0.0"
 
-__all__ = ["main", "__version__"]
+__all__ = ["__version__", "main"]
