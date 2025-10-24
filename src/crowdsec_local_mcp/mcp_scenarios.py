@@ -10,8 +10,7 @@ import yaml
 
 from mcp import types
 
-from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler
-from .utils import detect_compose_command
+from .mcp_core import LOGGER, PROMPTS_DIR, REGISTRY, SCRIPT_DIR, ToolHandler, ensure_docker_compose_cli
 
 SCENARIO_PROMPT_FILE = PROMPTS_DIR / "prompt-scenario.txt"
 SCENARIO_EXAMPLES_FILE = PROMPTS_DIR / "prompt-scenario-examples.txt"
@@ -327,7 +326,7 @@ def _run_scenario_compose_command(
             f"Scenario docker-compose file not found at {SCENARIO_COMPOSE_FILE}"
         )
 
-    base_cmd = detect_compose_command()
+    base_cmd = ensure_docker_compose_cli()
     full_cmd = base_cmd + ["-p", SCENARIO_PROJECT_NAME, "-f", str(SCENARIO_COMPOSE_FILE)] + args
     LOGGER.info("Executing scenario compose command: %s", " ".join(full_cmd))
 
