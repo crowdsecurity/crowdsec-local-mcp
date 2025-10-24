@@ -22,15 +22,15 @@ jobs:
       - name: Build MCPB package
         run: |
           mkdir -p dist
-          npx --yes @anthropic-ai/mcpb pack --output dist/crowdsec-local-mcp.mcpb
+          npx --yes @anthropic-ai/mcpb pack
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
           name: crowdsec-local-mcp.mcpb
-          path: dist/crowdsec-local-mcp.mcpb
+          path: crowdsec-local-mcp.mcpb
 
       - name: Attach package to release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/crowdsec-local-mcp.mcpb
+          files: crowdsec-local-mcp.mcpb
