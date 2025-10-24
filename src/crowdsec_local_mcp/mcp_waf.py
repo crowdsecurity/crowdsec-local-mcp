@@ -403,6 +403,7 @@ def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT,
         )
+        LOGGER.info("Launched docker compose process with PID %s", process.pid)
     except (FileNotFoundError, PermissionError):
         LOGGER.error("Failed to launch docker compose process")
         return (

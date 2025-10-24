@@ -1,0 +1,129 @@
+{
+  "manifest_version": "0.2",
+  "name": "crowdsec-local-mcp",
+  "version": "1.0.0",
+  "description": "Helps CrowdSec users to write, test and deploy WAF rules, scenarios, parsers etc.",
+  "long_description": "Provide tools and prompts to help CrowdSec users to write, test and deploy WAF rules, scenarios, parsers etc. in an easy way.",
+  "author": {
+    "name": "CrowdSec",
+    "email": "crowdsec-local-mcp@crowdsec.net",
+    "url": "https://www.crowdsec.net/"
+  },
+  "homepage": "https://www.crowdsec.net/",
+  "documentation": "https://doc.crowdsec.net/",
+  "icon": "./crowdsec_logo.png",
+  "server": {
+    "type": "python",
+    "entry_point": "src/crowdsec_local_mcp/__main__.py",
+    "mcp_config": {
+      "command": "${user_config.uv_path}",
+      "args": [
+        "run",
+        "--project",
+        "${__dirname}",
+        "crowdsec-mcp"
+      ]
+    }
+  },
+  "user_config": {
+    "uv_path": {
+      "type": "file",
+      "default": "uv",
+      "title": "Path to uv executable",
+      "description": "Path to the 'uv' executable used to run the server.",
+      "required": false
+    }
+  },
+  "tools": [
+    {
+      "name": "get_waf_top_level_prompt",
+      "description": "Get the top-level CrowdSec WAF workflow prompt that explains how to approach rule and test creation"
+    },
+    {
+      "name": "get_waf_prompt",
+      "description": "Get the main WAF rule generation prompt for CrowdSec"
+    },
+    {
+      "name": "get_waf_examples",
+      "description": "Get WAF rule generation examples for CrowdSec"
+    },
+    {
+      "name": "generate_waf_rule",
+      "description": "Get the complete WAF rule generation prompt (main prompt + examples) for CrowdSec"
+    },
+    {
+      "name": "generate_waf_tests",
+      "description": "Get the WAF test generation prompt for producing config.yaml and adapted Nuclei templates"
+    },
+    {
+      "name": "run_waf_tests",
+      "description": "Start the WAF harness and execute the provided nuclei test template against it"
+    },
+    {
+      "name": "validate_waf_rule",
+      "description": "Validate that a CrowdSec WAF rule YAML is syntactically correct"
+    },
+    {
+      "name": "lint_waf_rule",
+      "description": "Lint a CrowdSec WAF rule and provide warnings/hints for improvement"
+    },
+    {
+      "name": "deploy_waf_rule",
+      "description": "Get deployment instructions for CrowdSec WAF rules"
+    },
+    {
+      "name": "fetch_nuclei_exploit",
+      "description": "Retrieve nuclei templates from the official repository for a CVE to help with generation of WAF rules"
+    },
+    {
+      "name": "manage_waf_stack",
+      "description": "Start or stop the Docker-based CrowdSec AppSec test stack so the rule can be exercised with allowed and blocked requests"
+    },
+    {
+      "name": "curl_waf_endpoint",
+      "description": "Execute an HTTP request against the local WAF test endpoint (http://localhost:8081)"
+    },
+    {
+      "name": "get_scenario_prompt",
+      "description": "Retrieve the base prompt for authoring CrowdSec scenarios"
+    },
+    {
+      "name": "get_scenario_examples",
+      "description": "Retrieve example CrowdSec scenarios and annotations"
+    },
+    {
+      "name": "validate_scenario_yaml",
+      "description": "Validate CrowdSec scenario YAML structure for required fields"
+    },
+    {
+      "name": "lint_scenario_yaml",
+      "description": "Lint CrowdSec scenario YAML and highlight potential improvements"
+    },
+    {
+      "name": "deploy_scenario",
+      "description": "Retrieve guidance for packaging and deploying a CrowdSec scenario"
+    }
+  ],
+  "tools_generated": true,
+  "prompts_generated": true,
+  "compatibility": {
+    "uv": ">=0.5.0"
+  },
+  "keywords": [
+    "crowdsec",
+    "foss",
+    "waf",
+    "web application firewall",
+    "appsec",
+    "scenario",
+    "parser",
+    "grok",
+    "yaml",
+    "security engine"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crowdsecurity/crowdsec-local-mcp"
+  }
+}

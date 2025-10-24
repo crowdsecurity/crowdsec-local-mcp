@@ -31,19 +31,18 @@
 
 ### WAF Rules Creation and testing
 
- - [Rule creation from natural language with Claude Desktop](https://claude.ai/share/f0f246b2-6b20-4d70-a16c-c6b627ab2d80)
+ - [Rule creation from natural language](https://claude.ai/share/f0f246b2-6b20-4d70-a16c-c6b627ab2d80)
  - [Rule creation from CVE reference](https://claude.ai/share/b6599407-82dd-443c-a12d-9a9825ed99df)
 
 ### Scenario Creation and testing
 
- - XX
- - XX
+ - [Rule creation on HTTP events](https://claude.ai/share/3658165a-5636-4a7e-8043-01e7a7517200)
+ - [Rule creation based on GeoLocation factors](https://claude.ai/share/ff154e66-3c1a-44e6-a464-b694f65bd67e)
 
 ## Prerequisites
 
-- Python 3.12 or newer (the MCP server is packaged and tested with 3.12).
 - [uv](https://docs.astral.sh/uv/) 0.4 or newer, which provides the `uvx` runner used in the examples below.
-- Docker with the Compose plugin (Compose v2). The WAF test harness spins up multiple containers and requires a functioning Docker environment.
+- Docker with the Compose plugin (Compose v2).
 
 ## Installation
 
