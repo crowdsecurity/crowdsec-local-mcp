@@ -48,7 +48,7 @@ Use user's existing paths and add scenario to existing directory.
 #### Native Installation:
 ```bash
 # Create custom scenarios directory
-sudo mkdir -p /etc/crowdsec/scenarios/custom
+sudo install -d -m 755 /etc/crowdsec/scenarios/custom
 
 # Install the scenario file
 sudo install -m 644 ./SCENARIO_NAME.yaml /etc/crowdsec/scenarios/custom/SCENARIO_NAME.yaml
@@ -71,15 +71,28 @@ docker exec crowdsec_container cscli collections install COLLECTION_NAME
 
 ## Final Steps (Both Paths)
 
+### Native Installation:
 ```bash
 # Reload CrowdSec to apply changes
-sudo systemctl reload crowdsec    # or: docker exec crowdsec_container kill -HUP 1
+sudo systemctl reload crowdsec
 
 # Verify scenario is loaded
 sudo cscli scenarios list | grep SCENARIO_NAME
 
 # Check scenario metrics
 sudo cscli metrics
+```
+
+### Container Installation:
+```bash
+# Reload CrowdSec to apply changes
+docker exec crowdsec_container kill -HUP 1
+
+# Verify scenario is loaded
+docker exec crowdsec_container cscli scenarios list | grep SCENARIO_NAME
+
+# Check scenario metrics
+docker exec crowdsec_container cscli metrics
 ```
 
 ## Testing
