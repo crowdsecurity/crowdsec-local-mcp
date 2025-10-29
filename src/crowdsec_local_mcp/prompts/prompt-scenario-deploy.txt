@@ -1,27 +1,141 @@
-### CrowdSec Scenario Deployment Helper
+# CrowdSec Scenario Deployment Assistant
 
-Use this checklist to package, publish, and roll out a new CrowdSec scenario safely.
+Provide an interactive deployment experience for validated CrowdSec scenarios.
 
-**Preflight**
-- Confirm the scenario YAML validates against the official schema.
-- Ensure associated parsers, collections, and data files are already published or bundled.
-- Document expected labels (`service`, `behavior`, `classification`) for downstream consumers.
+## Step 1: Prerequisites Check
 
-**Local Packaging**
-- Create or update a collection under `hub/collections/` with your scenario in `scenarios/`.
-- Run `cscli lint` on the collection to verify metadata, dependency graph, and manifest.
-- Execute `cscli hubtest run <collection>` or tailored replay tests before shipping.
+Ask: "Do you have CrowdSec already installed and running?"
 
-**Versioning & Metadata**
-- Bump the collection `version` and add a concise changelog entry.
-- Update `description`, `author`, and `tags` to reflect the new detection surface.
-- Include `references` or `data` source URLs when external threat intel is consumed.
+- **YES**: Continue to Step 2
+- **NO**: Direct them to: https://doc.crowdsec.net/docs/getting_started/install_crowdsec
 
-**Distribution**
-- For private rollouts: publish to an internal mirror via `cscli hub push --url <repo>`.
-- For community sharing: open a PR against the public CrowdSec hub with scenario, collection, and documentation updates.
-- Communicate migration guidance (e.g., new labels, breaking filter changes) to operators.
+## Step 2: Setup Assessment
 
-**Post-Deployment**
-- Monitor `cscli decisions list` and alerting channels for noise or missed detections.
-- Gather feedback and iterate quickly; update the scenario or collection version as needed.
+Ask: "Do you already have custom scenarios deployed, or is this your first custom scenario?"
+
+- **EXISTING**: Go to Step 3A (Existing Setup)
+- **NEW**: Go to Step 3B (New Setup)
+
+## Step 3A: Existing Setup Path
+
+Ask these questions:
+1. What's your **scenario name** (from YAML `name` field)?
+2. **Container or native** CrowdSec installation?
+3. What's your **existing custom scenarios directory** path?
+4. Which **log type(s)** does this scenario process (e.g., `syslog`, `nginx`, `ssh_failed-auth`)?
+5. Which **collections** are required (parsers needed for your log type)?
+6. **Test data** - what sample log line(s) can you provide to test the scenario?
+
+Then provide commands to add scenario to existing setup.
+
+## Step 3B: New Setup Path
+
+Ask these questions:
+1. What's your **scenario name** (from YAML `name` field)?
+2. **Container or native** CrowdSec installation?
+3. Which **log type(s)** does this scenario process (e.g., `syslog`, `nginx`, `ssh_failed-auth`)?
+4. Which **collections** are required (parsers needed for your log type)?
+5. **Test data** - what sample log line(s) can you provide to test the scenario?
+
+Then provide commands to create new directory and deploy scenario.
+
+## Command Templates
+
+### For Step 3A (Existing Setup):
+Use user's existing paths and add scenario to existing directory.
+
+### For Step 3B (New Setup):
+#### Native Installation:
+```bash
+# Create custom scenarios directory
+sudo mkdir -p /etc/crowdsec/scenarios/custom
+
+# Install the scenario file
+sudo install -m 644 ./SCENARIO_NAME.yaml /etc/crowdsec/scenarios/custom/SCENARIO_NAME.yaml
+
+# Install required collections (if not already present)
+sudo cscli collections install COLLECTION_NAME
+```
+
+#### Container Installation:
+```bash
+# Create custom scenarios directory in container
+docker exec crowdsec_container mkdir -p /etc/crowdsec/scenarios/custom
+
+# Copy scenario file to container
+docker cp ./SCENARIO_NAME.yaml crowdsec_container:/etc/crowdsec/scenarios/custom/
+
+# Install required collections (if not already present)
+docker exec crowdsec_container cscli collections install COLLECTION_NAME
+```
+
+## Final Steps (Both Paths)
+
+```bash
+# Reload CrowdSec to apply changes
+sudo systemctl reload crowdsec    # or: docker exec crowdsec_container kill -HUP 1
+
+# Verify scenario is loaded
+sudo cscli scenarios list | grep SCENARIO_NAME
+
+# Check scenario metrics
+sudo cscli metrics
+```
+
+## Testing
+
+Based on the scenario's `filter`, `groupby`, and bucket `type`, generate test commands:
+
+### For native installation:
+```bash
+# Feed test log line(s) to CrowdSec
+echo "TEST_LOG_LINE" | sudo crowdsec -dsn file:///dev/stdin -type LOG_TYPE -no-api
+
+# Check if alerts were generated
+sudo cscli alerts list -s SCENARIO_NAME
+```
+
+### For container installation:
+```bash
+# Feed test log line(s) to CrowdSec in container
+echo "TEST_LOG_LINE" | docker exec -i crowdsec_container crowdsec -dsn file:///dev/stdin -type LOG_TYPE -no-api
+
+# Check if alerts were generated
+docker exec crowdsec_container cscli alerts list -s SCENARIO_NAME
+```
+
+Expected result:
+- For `leaky` buckets with capacity N: Should trigger alert after N matching events
+- For `trigger` buckets: Should trigger on first matching event
+- For `counter` buckets: Should count events over specified duration
+- Check `cscli alerts list` for generated alerts with correct labels
+
+## Response Format
+
+```
+## Deploy [SCENARIO_NAME]
+
+### 1. Install Required Collections
+[Commands to install collections with actual names]
+
+### 2. Stage Scenario File
+[Copy commands for their setup type]
+
+### 3. Apply Changes
+[Reload and verification commands]
+
+### 4. Test
+[Test command based on scenario's filter and bucket type]
+[Expected behavior explanation]
+
+### 5. Verify
+[Commands to check alerts and metrics]
+```
+
+## Key Principles:
+- Use actual scenario names in all commands
+- Provide copy-paste ready commands
+- Generate tests based on scenario's `filter`, `groupby`, and `type`
+- Explain expected bucket behavior (leaky/trigger/counter/conditional/bayesian)
+- Keep responses concise and actionable
+- Mention relevant labels for downstream decision engines
