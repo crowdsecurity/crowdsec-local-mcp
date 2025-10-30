@@ -50,6 +50,8 @@
 
 If you're using `claude desktop`, you can configure the MCP directly by double-clicking the `.mcpb` file that accompanies the release.
 
+> [!IMPORTANT]
+> On MacOS, configure `uv` path in the extension settings if `uv` isn't installed in the standard path. 
 
 ### Using `uvx`
 
@@ -77,6 +79,10 @@ By default the CLI launches the server with `uvx --from crowdsec-local-mcp crowd
 #### Using the `stdio` target
 
 `stdio` does not modify any files. Instead, `init stdio` prints a ready-to-paste JSON snippet that you can drop into any stdio-compatible MCP client configuration. This is useful when you want to manually wire the server into tools that do not have built-in automation support yet.
+
+## Troubleshooting
+
+If you just installed the mcp extension via `.mcpb` and `uv` or `uvx` isn't in the standard path, check the extension settings to configure `uv` path.
 
 ## Logging
 
