@@ -46,6 +46,8 @@
 
 ## Installation
 
+You can install the MCP using `uvx` **or** use packaged `.mcpb` file for claude code.
+
 ### Using `.mcpb` package
 
 If you're using `claude desktop`, you can configure the MCP directly by double-clicking the `.mcpb` file that accompanies the release.
@@ -72,7 +74,7 @@ The `init` helper writes the CrowdSec MCP server definition into the client’s 
 - `chatgpt` → `config.json` in the ChatGPT Desktop settings directory
 - `vscode` → `mcp.json` for VS Code (stable and insiders are both detected)
 
-If the configuration file already exists, a `.bak` backup is created before the MCP server block is updated. When the file is missing you can either pass `--force` to create it, or point `--config-path` to a custom location. Combine `--dry-run` with these options to preview the JSON without making any changes.
+If the client's configuration file already exists, a `.bak` backup is created before the MCP server block is updated. When the file is missing you can either pass `--force` to create it, or point `--config-path` to a custom location. Combine `--dry-run` with these options to preview the JSON without making any changes.
 
 By default the CLI launches the server with `uvx --from crowdsec-local-mcp crowdsec-mcp`. If neither `uvx` nor `uv` is available, it falls back to your current Python interpreter; you can override the executable with `--command` and the working directory with `--cwd`.
 
