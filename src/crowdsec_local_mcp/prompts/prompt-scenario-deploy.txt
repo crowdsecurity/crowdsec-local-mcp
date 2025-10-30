@@ -9,59 +9,39 @@ Ask: "Do you have CrowdSec already installed and running?"
 - **YES**: Continue to Step 2
 - **NO**: Direct them to: https://doc.crowdsec.net/docs/getting_started/install_crowdsec
 
-## Step 2: Setup Assessment
+## Step 2: Scenario Source & Packaging
 
-Ask: "Do you already have custom scenarios deployed, or is this your first custom scenario?"
+Ask: "Is this a custom scenario you maintain locally, or are you trying to install something from the Hub?"
 
-- **EXISTING**: Go to Step 3A (Existing Setup)
-- **NEW**: Go to Step 3B (New Setup)
+- **HUB SCENARIO**: Explain that hub scenarios should be installed via collections (`cscli collections install <collection>`), per https://doc.crowdsec.net/docs/log_processor/scenarios/deploy. Offer to switch to installation guidance if needed.
+- **CUSTOM SCENARIO**: Collect the deployment inputs:
+  1. The local path to the scenario YAML ready to copy into `/etc/crowdsec/scenarios/`.
+  2. Confirmation that dependencies (parsers, enrichers, post-overflows) are present or provide commands to install them.
+  3. Optional: proof of validation (eg. `cscli hubtest run` output or sample logs).
+  After gathering this data, proceed to Step 3.
 
-## Step 3A: Existing Setup Path
+## Step 3: Deployment
 
-Ask these questions:
-1. What's your **scenario name** (from YAML `name` field)?
-2. **Container or native** CrowdSec installation?
-3. What's your **existing custom scenarios directory** path?
-4. Which **log type(s)** does this scenario process (e.g., `syslog`, `nginx`, `ssh_failed-auth`)?
-5. Which **collections** are required (parsers needed for your log type)?
-6. **Test data** - what sample log line(s) can you provide to test the scenario?
+Instruct the user to:
+- deploy his yaml file in `/etc/crowdsec/scenarios/`.
+- verify deployment with `cscli`
 
-Then provide commands to add scenario to existing setup.
-
-## Step 3B: New Setup Path
-
-Ask these questions:
-1. What's your **scenario name** (from YAML `name` field)?
-2. **Container or native** CrowdSec installation?
-3. Which **log type(s)** does this scenario process (e.g., `syslog`, `nginx`, `ssh_failed-auth`)?
-4. Which **collections** are required (parsers needed for your log type)?
-5. **Test data** - what sample log line(s) can you provide to test the scenario?
-
-Then provide commands to create new directory and deploy scenario.
 
 ## Command Templates
 
-### For Step 3A (Existing Setup):
+### For Step 3 (Existing Setup):
+
 Use user's existing paths and add scenario to existing directory.
 
-### For Step 3B (New Setup):
-#### Native Installation:
-```bash
-# Create custom scenarios directory
-sudo install -d -m 755 /etc/crowdsec/scenarios/custom
+#### Host based Installation:
 
 # Install the scenario file
+```bash
 sudo install -m 644 ./SCENARIO_NAME.yaml /etc/crowdsec/scenarios/custom/SCENARIO_NAME.yaml
-
-# Install required collections (if not already present)
-sudo cscli collections install COLLECTION_NAME
 ```
 
 #### Container Installation:
 ```bash
-# Create custom scenarios directory in container
-docker exec crowdsec_container mkdir -p /etc/crowdsec/scenarios/custom
-
 # Copy scenario file to container
 docker cp ./SCENARIO_NAME.yaml crowdsec_container:/etc/crowdsec/scenarios/custom/
 
@@ -94,61 +74,3 @@ docker exec crowdsec_container cscli scenarios list | grep SCENARIO_NAME
 # Check scenario metrics
 docker exec crowdsec_container cscli metrics
 ```
-
-## Testing
-
-Based on the scenario's `filter`, `groupby`, and bucket `type`, generate test commands:
-
-### For native installation:
-```bash
-# Feed test log line(s) to CrowdSec
-echo "TEST_LOG_LINE" | sudo crowdsec -dsn file:///dev/stdin -type LOG_TYPE -no-api
-
-# Check if alerts were generated
-sudo cscli alerts list -s SCENARIO_NAME
-```
-
-### For container installation:
-```bash
-# Feed test log line(s) to CrowdSec in container
-echo "TEST_LOG_LINE" | docker exec -i crowdsec_container crowdsec -dsn file:///dev/stdin -type LOG_TYPE -no-api
-
-# Check if alerts were generated
-docker exec crowdsec_container cscli alerts list -s SCENARIO_NAME
-```
-
-Expected result:
-- For `leaky` buckets with capacity N: Should trigger alert after N matching events
-- For `trigger` buckets: Should trigger on first matching event
-- For `counter` buckets: Should count events over specified duration
-- Check `cscli alerts list` for generated alerts with correct labels
-
-## Response Format
-
-```
-## Deploy [SCENARIO_NAME]
-
-### 1. Install Required Collections
-[Commands to install collections with actual names]
-
-### 2. Stage Scenario File
-[Copy commands for their setup type]
-
-### 3. Apply Changes
-[Reload and verification commands]
-
-### 4. Test
-[Test command based on scenario's filter and bucket type]
-[Expected behavior explanation]
-
-### 5. Verify
-[Commands to check alerts and metrics]
-```
-
-## Key Principles:
-- Use actual scenario names in all commands
-- Provide copy-paste ready commands
-- Generate tests based on scenario's `filter`, `groupby`, and `type`
-- Explain expected bucket behavior (leaky/trigger/counter/conditional/bayesian)
-- Keep responses concise and actionable
-- Mention relevant labels for downstream decision engines
