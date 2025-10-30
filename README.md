@@ -46,12 +46,19 @@
 
 ## Installation
 
-### Quick MCP client setup
+### Using `.mcpb` package
 
-- Configure supported clients automatically with `uvx --from crowdsec-local-mcp init <client>`, where `<client>` is one of `claude-desktop`, `chatgpt`, `vscode`, or `stdio`:
+If you're using `claude desktop`, you can configure the MCP directly by double-clicking the `.mcpb` file that accompanies the release.
+
+> [!IMPORTANT]
+> On MacOS, configure `uv` path in the extension settings if `uv` isn't installed in the standard path. 
+
+### Using `uvx`
+
+- Configure supported clients automatically with `uvx --from crowdsec-local-mcp init <client>`, where `<client>` is one of `claude-desktop`, `claude-code`, `chatgpt`, `vscode`, or `stdio`:
 
 ```bash
-uvx --from crowdsec-local-mcp init claude-desktop
+uvx --from crowdsec-local-mcp init --dry-run claude-code
 ```
 
 Run `uvx --from crowdsec-local-mcp init --help` to see all flags and supported targets.
@@ -60,7 +67,8 @@ Run `uvx --from crowdsec-local-mcp init --help` to see all flags and supported t
 
 The `init` helper writes the CrowdSec MCP server definition into the client’s JSON configuration:
 
-- `claude-desktop` → `claude_desktop_config.json`
+- `claude-desktop` → `claude_desktop_config.json` in the Claude Desktop settings directory
+- `claude-code` → invoke `claude mcp` command with needed args
 - `chatgpt` → `config.json` in the ChatGPT Desktop settings directory
 - `vscode` → `mcp.json` for VS Code (stable and insiders are both detected)
 
@@ -71,6 +79,10 @@ By default the CLI launches the server with `uvx --from crowdsec-local-mcp crowd
 #### Using the `stdio` target
 
 `stdio` does not modify any files. Instead, `init stdio` prints a ready-to-paste JSON snippet that you can drop into any stdio-compatible MCP client configuration. This is useful when you want to manually wire the server into tools that do not have built-in automation support yet.
+
+## Troubleshooting
+
+If you just installed the mcp extension via `.mcpb` and `uv` or `uvx` isn't in the standard path, check the extension settings to configure `uv` path.
 
 ## Logging
 

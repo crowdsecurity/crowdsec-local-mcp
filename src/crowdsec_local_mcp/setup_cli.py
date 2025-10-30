@@ -2,15 +2,16 @@ import argparse
 import json
 import os
 import platform
+import shlex
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Iterable
 
 SERVER_KEY = "crowdsec-local-mcp"
-SERVER_LABEL = "CrowdSec MCP"
-
+SERVER_LABEL = "CrowdSecMCP"
 
 @dataclass
 class CLIArgs:
@@ -42,6 +43,8 @@ def main(argv: Iterable[str] | None = None) -> None:
 
     if args.target == "claude-desktop":
         _configure_claude(args, server_payload)
+    elif args.target == "claude-code":
+        _configure_claude_code(args, server_payload)
     elif args.target == "chatgpt":
         _configure_chatgpt(args, server_payload)
     elif args.target == "vscode":
@@ -55,12 +58,12 @@ def _parse_args(argv: Iterable[str] | None) -> CLIArgs:
         prog="init",
         description=(
             "Initialize CrowdSec MCP integration for supported clients "
-            "(Claude Desktop, ChatGPT Desktop, Visual Studio Code, or stdio)."
+            "(Claude Desktop, Claude Code, ChatGPT Desktop, Visual Studio Code, or stdio)."
         ),
     )
     parser.add_argument(
         "target",
-        choices=("claude-desktop", "chatgpt", "vscode", "stdio"),
+        choices=("claude-desktop", "claude-code", "chatgpt", "vscode", "stdio"),
         help="Client to configure.",
     )
     parser.add_argument(
@@ -137,6 +140,51 @@ def _configure_claude(args: CLIArgs, server_payload: dict[str, object]) -> None:
         args,
         client_name="Claude Desktop",
     )
+
+
+def _configure_claude_code(args: CLIArgs, server_payload: dict[str, object]) -> None:
+    runner_command = server_payload["command"]
+    if not isinstance(runner_command, str):
+        raise TypeError("Server payload 'command' must be a string.")
+    runner_args = server_payload.get("args", [])
+    if not isinstance(runner_args, list):
+        raise TypeError("Server payload 'args' must be a list.")
+
+    claude_invocation = [
+        "claude",
+        "mcp",
+        "add",
+        "--transport",
+        "stdio",
+        "--scope",
+        "user",
+        SERVER_LABEL,
+        "--",
+        runner_command,
+        *runner_args,
+    ]
+    quoted_command = " ".join(shlex.quote(part) for part in claude_invocation)
+
+    if args.dry_run:
+        print(
+            "Run the following command to register CrowdSec MCP with Claude Code:\n"
+            f"{quoted_command}"
+        )
+        return
+
+    if shutil.which("claude") is None:
+        raise FileNotFoundError(
+            "The 'claude' CLI is not available on PATH. Install Claude Code CLI and "
+            f"run:\n{quoted_command}"
+        )
+
+    result = subprocess.run(claude_invocation, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"'claude mcp add' failed with exit code {result.returncode}. "
+            f"Run manually:\n{quoted_command}"
+        )
+    print("Registered CrowdSec MCP with Claude Code CLI.")
 
 
 def _configure_chatgpt(args: CLIArgs, server_payload: dict[str, object]) -> None:
