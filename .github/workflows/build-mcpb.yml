@@ -22,7 +22,7 @@ jobs:
       - name: Build MCPB package
         run: |
           mkdir -p dist
-          npx --yes @anthropic-ai/mcpb pack
+          npx --yes @anthropic-ai/mcpb@v1.1.1 pack
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
