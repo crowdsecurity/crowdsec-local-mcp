@@ -761,6 +761,19 @@ def _tool_generate_waf_tests(arguments: dict[str, Any] | None) -> list[types.Tex
         raise RuntimeError(f"Error generating WAF test prompt: {exc!s}") from exc
 
 
+def _tool_get_waf_tests_prompt(_: dict[str, Any] | None) -> list[types.TextContent]:
+    try:
+        LOGGER.info("Serving WAF tests prompt content")
+        prompt_content = WAF_TESTS_PROMPT_FILE.read_text(encoding="utf-8")
+        return [types.TextContent(type="text", text=prompt_content)]
+    except FileNotFoundError as exc:
+        LOGGER.error("WAF tests prompt file not found at %s", WAF_TESTS_PROMPT_FILE)
+        raise FileNotFoundError(f"WAF tests prompt file not found at {WAF_TESTS_PROMPT_FILE}") from exc
+    except Exception as exc:
+        LOGGER.error("Error reading WAF tests prompt: %s", exc)
+        raise RuntimeError(f"Error reading WAF tests prompt: {exc!s}") from exc
+
+
 def _tool_validate_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     if not arguments or "rule_yaml" not in arguments:
         LOGGER.warning("Validation request missing 'rule_yaml' argument")
@@ -804,6 +817,135 @@ def _tool_deploy_waf_rule(_: dict[str, Any] | None) -> list[types.TextContent]:
         LOGGER.error("Error loading WAF deployment guide: %s", exc)
         raise RuntimeError(f"Error reading WAF deployment guide: {exc!s}") from exc
 
+
+def _is_relative_to(base: Path, target: Path) -> bool:
+    try:
+        target.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
+def _tool_prepare_waf_pr(arguments: dict[str, Any] | None) -> list[types.TextContent]:
+    if not arguments:
+        LOGGER.warning("prepare_waf_pr called without arguments")
+        raise ValueError("Missing arguments payload")
+
+    hub_dir = arguments.get("hub_dir")
+    rule_yaml = arguments.get("rule_yaml")
+    test_config_yaml = arguments.get("test_config_yaml")
+    test_nuclei_yaml = arguments.get("test_nuclei_yaml")
+    rule_filename = arguments.get("rule_filename")
+    nuclei_filename = arguments.get("nuclei_filename")
+    collection_name = arguments.get("collection_name")
+
+    if not isinstance(hub_dir, str) or not hub_dir.strip():
+        raise ValueError("'hub_dir' must be a non-empty string pointing to a local CrowdSec hub clone")
+    if not isinstance(rule_yaml, str) or not rule_yaml.strip():
+        raise ValueError("'rule_yaml' must be a non-empty string containing the WAF rule")
+    if not isinstance(test_config_yaml, str) or not test_config_yaml.strip():
+        raise ValueError("'test_config_yaml' must be a non-empty string containing the test config.yaml")
+    if not isinstance(test_nuclei_yaml, str) or not test_nuclei_yaml.strip():
+        raise ValueError("'test_nuclei_yaml' must be a non-empty string containing the adapted nuclei template")
+    if not isinstance(rule_filename, str) or not rule_filename.strip():
+        raise ValueError("'rule_filename' must be a non-empty string")
+    if not isinstance(nuclei_filename, str) or not nuclei_filename.strip():
+        raise ValueError("'nuclei_filename' must be a non-empty string")
+    if collection_name is not None and (
+        not isinstance(collection_name, str) or not collection_name.strip()
+    ):
+        raise ValueError("'collection_name' must be a non-empty string when provided")
+
+    hub_path = Path(hub_dir).expanduser()
+    if not hub_path.exists() or not hub_path.is_dir():
+        raise ValueError(f"hub_dir does not exist or is not a directory: {hub_path}")
+
+    rule_rel_path = Path(rule_filename.strip())
+
+    rule_path = (hub_path / rule_rel_path).resolve()
+    if not _is_relative_to(hub_path.resolve(), rule_path):
+        raise ValueError("Resolved rule path escapes the hub directory")
+
+    rule_path.parent.mkdir(parents=True, exist_ok=True)
+    rule_path.write_text(rule_yaml, encoding="utf-8")
+
+    test_dir_name = rule_path.stem
+    tests_root = (hub_path / ".appsec-tests" / test_dir_name).resolve()
+    if not _is_relative_to(hub_path.resolve(), tests_root):
+        raise ValueError("Resolved test path escapes the hub directory")
+    tests_root.mkdir(parents=True, exist_ok=True)
+
+    nuclei_file = nuclei_filename.strip()
+    if not nuclei_file.endswith(".yaml"):
+        nuclei_file = f"{nuclei_file}.yaml"
+
+    config_path = tests_root / "config.yaml"
+    nuclei_path = tests_root / nuclei_file
+    config_path.write_text(test_config_yaml, encoding="utf-8")
+    nuclei_path.write_text(test_nuclei_yaml, encoding="utf-8")
+
+    summary_lines = [
+        "Prepared PR assets in the hub clone:",
+        f"- Rule: {rule_path}",
+        f"- Test config: {config_path}",
+        f"- Test nuclei: {nuclei_path}",
+    ]
+
+    if collection_name:
+        normalized = collection_name.strip().lstrip("/")
+        if "/" not in normalized or normalized.count("/") != 1:
+            raise ValueError("'collection_name' must be in the format 'author/name'")
+        author, name = normalized.split("/", 1)
+        if not author or not name:
+            raise ValueError("'collection_name' must be in the format 'author/name'")
+        collection_file = (hub_path / "collections" / author / f"{name}.yaml").resolve()
+        if not _is_relative_to(hub_path.resolve(), collection_file):
+            raise ValueError("Resolved collection path escapes the hub directory")
+        if not collection_file.exists():
+            summary_lines.append(
+                f"- Warning: collection file not found at {collection_file}. Add the rule manually."
+            )
+        else:
+            try:
+                collection_payload = yaml.safe_load(collection_file.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError as exc:
+                raise RuntimeError(f"Failed to parse collection YAML at {collection_file}: {exc}") from exc
+            if not isinstance(collection_payload, dict):
+                raise RuntimeError(f"Collection YAML at {collection_file} must be a mapping")
+            appsec_rules = collection_payload.get("appsec-rules")
+            if appsec_rules is None:
+                appsec_rules = []
+                collection_payload["appsec-rules"] = appsec_rules
+            if not isinstance(appsec_rules, list):
+                raise RuntimeError("'appsec-rules' in the collection file must be a list")
+            try:
+                rule_payload = yaml.safe_load(rule_yaml) or {}
+            except yaml.YAMLError as exc:
+                raise RuntimeError(f"Failed to parse rule YAML to read the rule name: {exc}") from exc
+            if not isinstance(rule_payload, dict):
+                raise RuntimeError("Rule YAML must be a mapping to read the rule name")
+            rule_name = rule_payload.get("name")
+            if not isinstance(rule_name, str) or not rule_name.strip():
+                raise RuntimeError("Rule YAML must include a non-empty 'name' field to update the collection")
+            rule_name = rule_name.strip()
+            if rule_name not in appsec_rules:
+                appsec_rules.append(rule_name)
+                collection_file.write_text(
+                    yaml.safe_dump(collection_payload, sort_keys=False),
+                    encoding="utf-8",
+                )
+                summary_lines.append(
+                    f"- Updated collection: added {rule_name} to {collection_file}"
+                )
+            else:
+                summary_lines.append("- Collection already includes the rule; no update needed")
+    else:
+        summary_lines.append(
+            "- Warning: rule not added to appsec-virtual-patching collection. "
+            "Remember to add it before opening the PR."
+        )
+
+    return [types.TextContent(type="text", text="\n".join(summary_lines))]
 
 def _tool_manage_waf_stack(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     try:
@@ -1154,10 +1296,12 @@ WAF_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "get_waf_prompt": _tool_get_waf_prompt,
     "get_waf_examples": _tool_get_waf_examples,
     "generate_waf_rule": _tool_generate_waf_rule,
+    "get_waf_tests_prompt": _tool_get_waf_tests_prompt,
     "generate_waf_tests": _tool_generate_waf_tests,
     "validate_waf_rule": _tool_validate_waf_rule,
     "lint_waf_rule": _tool_lint_waf_rule,
     "deploy_waf_rule": _tool_deploy_waf_rule,
+    "prepare_waf_pr": _tool_prepare_waf_pr,
     "fetch_nuclei_exploit": _tool_fetch_nuclei_exploit,
     "manage_waf_stack": _tool_manage_waf_stack,
     "run_waf_tests": _tool_run_waf_tests,
@@ -1225,6 +1369,15 @@ WAF_TOOLS: list[types.Tool] = [
         },
     ),
     types.Tool(
+        name="get_waf_tests_prompt",
+        description="Get the WAF test authoring prompt for producing config.yaml and adapted Nuclei templates",
+        inputSchema={
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
         name="run_waf_tests",
         description="Start the WAF harness and execute the provided nuclei test template against it."
         " If this action fails because docker isn't present or cannot be run, prompt the user to set it up manually.",
@@ -1280,6 +1433,55 @@ WAF_TOOLS: list[types.Tool] = [
         inputSchema={
             "type": "object",
             "properties": {},
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="prepare_waf_pr",
+        description=(
+            "Help prepare a pull request in a local clone of the CrowdSec hub repository by adding the generated WAF rule "
+            "and associated test files."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "hub_dir": {
+                    "type": "string",
+                    "description": "Path to the local clone of the CrowdSec hub repository",
+                },
+                "rule_yaml": {
+                    "type": "string",
+                    "description": "Generated WAF rule YAML content",
+                },
+                "test_config_yaml": {
+                    "type": "string",
+                    "description": "Generated AppSec test config.yaml content",
+                },
+                "test_nuclei_yaml": {
+                    "type": "string",
+                    "description": "Generated adapted nuclei template content",
+                },
+                "rule_filename": {
+                    "type": "string",
+                    "description": "Relative path (from hub root) for the rule file",
+                },
+                "nuclei_filename": {
+                    "type": "string",
+                    "description": "Filename for the nuclei test template",
+                },
+                "collection_name": {
+                    "type": "string",
+                    "description": "Target collection in the format author/name (mapped to collections/author/name.yaml)",
+                },
+            },
+            "required": [
+                "hub_dir",
+                "rule_yaml",
+                "test_config_yaml",
+                "test_nuclei_yaml",
+                "rule_filename",
+                "nuclei_filename",
+            ],
             "additionalProperties": False,
         },
     ),

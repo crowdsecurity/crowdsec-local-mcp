@@ -56,6 +56,10 @@
       "description": "Get the WAF test generation prompt for producing config.yaml and adapted Nuclei templates"
     },
     {
+      "name": "get_waf_tests_prompt",
+      "description": "Get the WAF test authoring prompt for producing config.yaml and adapted Nuclei templates"
+    },
+    {
       "name": "run_waf_tests",
       "description": "Start the WAF harness and execute the provided nuclei test template against it"
     },
@@ -70,6 +74,10 @@
     {
       "name": "deploy_waf_rule",
       "description": "Get deployment instructions for CrowdSec WAF rules"
+    },
+    {
+      "name": "prepare_waf_pr",
+      "description": "Write the generated WAF rule and AppSec test assets into a local CrowdSec hub clone, and optionally add the rule to the appsec-virtual-patching collection"
     },
     {
       "name": "fetch_nuclei_exploit",
