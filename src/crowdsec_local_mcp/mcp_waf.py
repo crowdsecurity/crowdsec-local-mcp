@@ -36,18 +36,8 @@ WAF_SCHEMA_FILE = CROWDSEC_SCHEMAS_DIR / "appsec_rules_schema.yaml"
 WAF_TEST_COMPOSE_DIR = SCRIPT_DIR / "compose" / "waf-test"
 WAF_TEST_COMPOSE_FILE = WAF_TEST_COMPOSE_DIR / "docker-compose.yml"
 WAF_TEST_RULE_PATH = WAF_TEST_COMPOSE_DIR / "rules" / "current-rule.yaml"
-WAF_TEST_APPSEC_TEMPLATE = (
-    WAF_TEST_COMPOSE_DIR
-    / "crowdsec"
-    / "appsec-configs"
-    / "mcp-appsec.yaml.template"
-)
-WAF_TEST_APPSEC_CONFIG = (
-    WAF_TEST_COMPOSE_DIR
-    / "crowdsec"
-    / "appsec-configs"
-    / "mcp-appsec.yaml"
-)
+WAF_TEST_APPSEC_TEMPLATE = WAF_TEST_COMPOSE_DIR / "crowdsec" / "appsec-configs" / "mcp-appsec.yaml.template"
+WAF_TEST_APPSEC_CONFIG = WAF_TEST_COMPOSE_DIR / "crowdsec" / "appsec-configs" / "mcp-appsec.yaml"
 WAF_RULE_NAME_PLACEHOLDER = "__PLACEHOLDER_FOR_USER_RULE__"
 WAF_TEST_PROJECT_NAME = "crowdsec-mcp-waf"
 WAF_TEST_NETWORK_NAME = f"{WAF_TEST_PROJECT_NAME}_waf-net"
@@ -84,11 +74,7 @@ def _collect_compose_logs(services: list[str] | None = None, tail_lines: int = 2
         check=False,
     )
 
-    combined = "\n".join(
-        part.strip()
-        for part in ((result.stdout or ""), (result.stderr or ""))
-        if part
-    ).strip()
+    combined = "\n".join(part.strip() for part in ((result.stdout or ""), (result.stderr or "")) if part).strip()
 
     if not combined:
         return ""
@@ -100,9 +86,7 @@ def _collect_compose_logs(services: list[str] | None = None, tail_lines: int = 2
     return "\n".join(lines)
 
 
-def _run_compose_command(
-    args: list[str], capture_output: bool = True, check: bool = True
-) -> subprocess.CompletedProcess:
+def _run_compose_command(args: list[str], capture_output: bool = True, check: bool = True) -> subprocess.CompletedProcess:
     """Run a docker compose command inside the WAF test harness directory."""
     base_cmd = ensure_docker_compose_cli()
     full_cmd = base_cmd + ["-p", WAF_TEST_PROJECT_NAME, "-f", str(WAF_TEST_COMPOSE_FILE)] + args
@@ -118,10 +102,7 @@ def _run_compose_command(
         )
     except (FileNotFoundError, PermissionError) as error:
         LOGGER.error("Compose command failed to start: %s", error)
-        raise RuntimeError(
-            "Docker Compose is required but could not be executed. "
-            "Install Docker and ensure the current user can run `docker compose` commands."
-        ) from error
+        raise RuntimeError("Docker Compose is required but could not be executed. Install Docker and ensure the current user can run `docker compose` commands.") from error
     except subprocess.CalledProcessError as error:
         stdout = (error.stdout or "").strip()
         stderr = (error.stderr or "").strip()
@@ -133,14 +114,10 @@ def _run_compose_command(
             error.returncode,
             combined.splitlines()[0] if combined else "no output",
         )
-        raise RuntimeError(
-            f"docker compose {' '.join(args)} failed (exit code {error.returncode}):\n{combined}"
-        ) from error
+        raise RuntimeError(f"docker compose {' '.join(args)} failed (exit code {error.returncode}):\n{combined}") from error
 
 
-def _run_compose_exec(
-    args: list[str], capture_output: bool = True, check: bool = True
-) -> subprocess.CompletedProcess:
+def _run_compose_exec(args: list[str], capture_output: bool = True, check: bool = True) -> subprocess.CompletedProcess:
     """Run docker compose exec against the CrowdSec container."""
     exec_args = ["exec", "-T"] + args
     return _run_compose_command(exec_args, capture_output=capture_output, check=check)
@@ -150,9 +127,7 @@ def _teardown_compose_stack(check: bool = True) -> None:
     """Stop the compose stack and ensure any supervising process is terminated."""
     global _COMPOSE_STACK_PROCESS
     if not WAF_TEST_COMPOSE_FILE.exists():
-        LOGGER.warning(
-            "Requested stack teardown but compose file %s is missing", WAF_TEST_COMPOSE_FILE
-        )
+        LOGGER.warning("Requested stack teardown but compose file %s is missing", WAF_TEST_COMPOSE_FILE)
         _COMPOSE_STACK_PROCESS = None
         return
 
@@ -164,9 +139,7 @@ def _teardown_compose_stack(check: bool = True) -> None:
             try:
                 _COMPOSE_STACK_PROCESS.wait(timeout=15)
             except subprocess.TimeoutExpired:
-                LOGGER.warning(
-                    "Compose stack process did not exit in time; terminating forcefully"
-                )
+                LOGGER.warning("Compose stack process did not exit in time; terminating forcefully")
                 _COMPOSE_STACK_PROCESS.kill()
                 _COMPOSE_STACK_PROCESS.wait(timeout=5)
         _COMPOSE_STACK_PROCESS = None
@@ -184,14 +157,9 @@ def _wait_for_crowdsec_ready(timeout: int = 90) -> None:
                 _COMPOSE_STACK_PROCESS = None
                 logs = _collect_compose_logs(["crowdsec", "nginx", "backend"])
                 log_section = f"\n\nService logs:\n{logs}" if logs else ""
-                raise RuntimeError(
-                    "WAF stack exited while waiting for CrowdSec to become ready"
-                    f" (exit code {exit_code}).{log_section}"
-                )
+                raise RuntimeError(f"WAF stack exited while waiting for CrowdSec to become ready (exit code {exit_code}).{log_section}")
         try:
-            result = _run_compose_exec(
-                ["crowdsec", "cscli", "lapi", "status"], capture_output=True, check=False
-            )
+            result = _run_compose_exec(["crowdsec", "cscli", "lapi", "status"], capture_output=True, check=False)
             if isinstance(result, subprocess.CompletedProcess) and result.returncode == 0:
                 LOGGER.info("CrowdSec API is ready")
                 return
@@ -265,10 +233,7 @@ def _run_nuclei_container(
 
     if result.returncode != 0:
         LOGGER.error("Nuclei container exited with code %s", result.returncode)
-        failure = (
-            f"Nuclei container exited with status {result.returncode}."
-            + (f"\n\n{detail_text}" if detail_text else "")
-        )
+        failure = f"Nuclei container exited with status {result.returncode}." + (f"\n\n{detail_text}" if detail_text else "")
         return (False, failure)
 
     matches: list[dict[str, Any]] = []
@@ -291,10 +256,7 @@ def _run_nuclei_container(
         if unmatched_lines:
             info_lines.append("Nuclei produced output but no matches were recorded:\n" + "\n".join(unmatched_lines))
         else:
-            info_lines.append(
-                "Nuclei completed successfully but reported zero matches. "
-                "The WAF rule likely did not block the request (missing HTTP 403)."
-            )
+            info_lines.append("Nuclei completed successfully but reported zero matches. The WAF rule likely did not block the request (missing HTTP 403).")
         if stderr:
             info_lines.append(f"stderr:\n{stderr}")
         return (False, "\n\n".join(info_lines))
@@ -307,9 +269,7 @@ def _run_nuclei_container(
         url = match.get("matched-at") or match.get("matchedAt") or target_url
         summary_lines.append(f" - {template_id} matched at {url}")
     if unmatched_lines:
-        summary_lines.append(
-            "Additional nuclei output:\n" + "\n".join(unmatched_lines)
-        )
+        summary_lines.append("Additional nuclei output:\n" + "\n".join(unmatched_lines))
     if stderr:
         summary_lines.append(f"stderr:\n{stderr}")
     return (True, "\n".join(summary_lines))
@@ -480,9 +440,7 @@ def _validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
     ]
 
 
-def _analyze_rule_item(
-    rule_item: Any, rule_path: str, warnings: list[str]
-) -> tuple[bool, bool]:
+def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> tuple[bool, bool]:
     """Recursively inspect rule items, track operator usage, and record warnings."""
     if not isinstance(rule_item, dict):
         return (False, False)
@@ -494,9 +452,7 @@ def _analyze_rule_item(
     contains_or = has_or
 
     if has_and and has_or:
-        warnings.append(
-            f"{location} mixes 'and' and 'or' operators at the same level; split them into separate nested blocks"
-        )
+        warnings.append(f"{location} mixes 'and' and 'or' operators at the same level; split them into separate nested blocks")
 
     if has_and:
         for i, sub_rule in enumerate(rule_item["and"]):
@@ -524,20 +480,13 @@ def _analyze_rule_item(
             match_type = match.get("type", "")
             match_value = match.get("value", "")
 
-            if (
-                match_type in CASE_SENSITIVE_MATCH_TYPES
-                and isinstance(match_value, str)
-                and any(c.isupper() for c in match_value)
-            ):
+            if match_type in CASE_SENSITIVE_MATCH_TYPES and isinstance(match_value, str) and any(c.isupper() for c in match_value):
                 transforms = rule_item.get("transform", [])
-                has_lowercase = (
-                    "lowercase" in transforms if isinstance(transforms, list) else False
-                )
+                has_lowercase = "lowercase" in transforms if isinstance(transforms, list) else False
 
                 if not has_lowercase:
                     warnings.append(
-                        f"Match at {location} uses '{match_type}' with uppercase letters "
-                        f"but no 'lowercase' transform - consider adding lowercase transform for case-insensitive matching"
+                        f"Match at {location} uses '{match_type}' with uppercase letters but no 'lowercase' transform - consider adding lowercase transform for case-insensitive matching"
                     )
 
             if isinstance(match_value, str):
@@ -545,9 +494,7 @@ def _analyze_rule_item(
                 sql_keywords = [kw for kw in SQL_KEYWORD_INDICATORS if kw in lower_value]
                 if sql_keywords:
                     keywords_str = ", ".join(sorted(set(sql_keywords)))
-                    warnings.append(
-                        f"Match at {location} contains SQL keyword(s) ({keywords_str}); instead of keyword blacklisting, detect escaping characters like quotes or semicolons"
-                    )
+                    warnings.append(f"Match at {location} contains SQL keyword(s) ({keywords_str}); instead of keyword blacklisting, detect escaping characters like quotes or semicolons")
 
                 transforms = rule_item.get("transform", [])
                 if isinstance(transforms, list) and "urldecode" in transforms:
@@ -591,9 +538,7 @@ def lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
         name = parsed.get("name", "")
         if isinstance(name, str):
             if name.startswith("crowdsecurity/"):
-                warnings.append(
-                    "Rule name starts with 'crowdsecurity/' which is reserved for official CrowdSec rules; consider using your own namespace"
-                )
+                warnings.append("Rule name starts with 'crowdsecurity/' which is reserved for official CrowdSec rules; consider using your own namespace")
         else:
             warnings.append("Field 'name' should be a string")
 
@@ -601,9 +546,7 @@ def lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
         for i, rule in enumerate(parsed["rules"]):
             rule_has_and, rule_has_or = _analyze_rule_item(rule, f"[{i}]", warnings)
             if rule_has_and and rule_has_or:
-                warnings.append(
-                    f"rules[{i}] uses both 'and' and 'or' operators somewhere in the block; CrowdSec cannot mix them in one rule, split the logic into separate rules"
-                )
+                warnings.append(f"rules[{i}] uses both 'and' and 'or' operators somewhere in the block; CrowdSec cannot mix them in one rule, split the logic into separate rules")
 
     result_lines: list[str] = []
 
@@ -645,9 +588,7 @@ def _tool_get_waf_top_level_prompt(_: dict[str, Any] | None) -> list[types.TextC
         ]
     except FileNotFoundError as exc:
         LOGGER.error("WAF top-level prompt file not found at %s", WAF_TOP_LEVEL_PROMPT_FILE)
-        raise FileNotFoundError(
-            f"WAF top-level prompt file not found at {WAF_TOP_LEVEL_PROMPT_FILE}"
-        ) from exc
+        raise FileNotFoundError(f"WAF top-level prompt file not found at {WAF_TOP_LEVEL_PROMPT_FILE}") from exc
     except Exception as exc:
         LOGGER.error("Error loading WAF top-level prompt: %s", exc)
         raise RuntimeError(f"Error reading WAF top-level prompt file: {exc!s}") from exc
@@ -702,10 +643,7 @@ def _tool_generate_waf_rule(arguments: dict[str, Any] | None) -> list[types.Text
             bool(nuclei_template),
         )
         if nuclei_template:
-            combined_prompt += (
-                "\n\n### Input Nuclei Template to Process:\n"
-                f"```yaml\n{nuclei_template}\n```"
-            )
+            combined_prompt += f"\n\n### Input Nuclei Template to Process:\n```yaml\n{nuclei_template}\n```"
 
         return [
             types.TextContent(
@@ -736,17 +674,10 @@ def _tool_generate_waf_tests(arguments: dict[str, Any] | None) -> list[types.Tex
         combined_prompt = tests_prompt
 
         if rule_filename:
-            combined_prompt += (
-                "\n\n### Rule Under Test\n"
-                f"The detection rule produced earlier is stored at: {rule_filename}\n"
-                "Use this exact path in the config.yaml `appsec-rules` list."
-            )
+            combined_prompt += f"\n\n### Rule Under Test\nThe detection rule produced earlier is stored at: {rule_filename}\nUse this exact path in the config.yaml `appsec-rules` list."
 
         if nuclei_template:
-            combined_prompt += (
-                "\n\n### Input Nuclei Template to Adapt:\n"
-                f"```yaml\n{nuclei_template}\n```"
-            )
+            combined_prompt += f"\n\n### Input Nuclei Template to Adapt:\n```yaml\n{nuclei_template}\n```"
 
         return [
             types.TextContent(
@@ -827,44 +758,114 @@ def _is_relative_to(base: Path, target: Path) -> bool:
         return False
 
 
+def _require_non_empty_str(value: Any, field: str, message: str | None = None) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(message or f"'{field}' must be a non-empty string")
+    return value.strip()
+
+
+def _parse_collection_name(collection_name: str) -> tuple[str, str]:
+    normalized = collection_name.strip().lstrip("/")
+    if normalized.count("/") != 1:
+        raise ValueError("'collection_name' must be in the format 'author/name'")
+    author, name = normalized.split("/", 1)
+    if not author or not name:
+        raise ValueError("'collection_name' must be in the format 'author/name'")
+    return author, name
+
+
+def _load_yaml_mapping(payload: str, error_context: str) -> dict[str, Any]:
+    try:
+        parsed = yaml.safe_load(payload) or {}
+    except yaml.YAMLError as exc:
+        raise RuntimeError(f"Failed to parse {error_context}: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"{error_context} must be a mapping")
+    return parsed
+
+
+def _update_collection_with_rule(
+    summary_lines: list[str],
+    hub_root: Path,
+    collection_name: str,
+    rule_yaml: str,
+) -> None:
+    author, name = _parse_collection_name(collection_name)
+    collection_file = (hub_root / "collections" / author / f"{name}.yaml").resolve()
+    if not _is_relative_to(hub_root, collection_file):
+        raise ValueError("Resolved collection path escapes the hub directory")
+    if not collection_file.exists():
+        summary_lines.append(f"- Warning: collection file not found at {collection_file}. Add the rule manually.")
+        return
+
+    collection_payload = _load_yaml_mapping(
+        collection_file.read_text(encoding="utf-8"),
+        f"collection YAML at {collection_file}",
+    )
+    appsec_rules = collection_payload.get("appsec-rules")
+    if appsec_rules is None:
+        appsec_rules = []
+        collection_payload["appsec-rules"] = appsec_rules
+    if not isinstance(appsec_rules, list):
+        raise RuntimeError("'appsec-rules' in the collection file must be a list")
+
+    rule_payload = _load_yaml_mapping(rule_yaml, "rule YAML to read the rule name")
+    rule_name = rule_payload.get("name")
+    if not isinstance(rule_name, str) or not rule_name.strip():
+        raise RuntimeError("Rule YAML must include a non-empty 'name' field to update the collection")
+    rule_name = rule_name.strip()
+
+    if rule_name in appsec_rules:
+        summary_lines.append("- Collection already includes the rule; no update needed")
+        return
+
+    appsec_rules.append(rule_name)
+    collection_file.write_text(
+        yaml.safe_dump(collection_payload, sort_keys=False),
+        encoding="utf-8",
+    )
+    summary_lines.append(f"- Updated collection: added {rule_name} to {collection_file}")
+
 def _tool_prepare_waf_pr(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     if not arguments:
         LOGGER.warning("prepare_waf_pr called without arguments")
         raise ValueError("Missing arguments payload")
 
-    hub_dir = arguments.get("hub_dir")
-    rule_yaml = arguments.get("rule_yaml")
-    test_config_yaml = arguments.get("test_config_yaml")
-    test_nuclei_yaml = arguments.get("test_nuclei_yaml")
-    rule_filename = arguments.get("rule_filename")
-    nuclei_filename = arguments.get("nuclei_filename")
+    hub_dir = _require_non_empty_str(
+        arguments.get("hub_dir"),
+        "hub_dir",
+        "'hub_dir' must be a non-empty string pointing to a local CrowdSec hub clone",
+    )
+    rule_yaml = _require_non_empty_str(
+        arguments.get("rule_yaml"),
+        "rule_yaml",
+        "'rule_yaml' must be a non-empty string containing the WAF rule",
+    )
+    test_config_yaml = _require_non_empty_str(
+        arguments.get("test_config_yaml"),
+        "test_config_yaml",
+        "'test_config_yaml' must be a non-empty string containing the test config.yaml",
+    )
+    test_nuclei_yaml = _require_non_empty_str(
+        arguments.get("test_nuclei_yaml"),
+        "test_nuclei_yaml",
+        "'test_nuclei_yaml' must be a non-empty string containing the adapted nuclei template",
+    )
+    rule_filename = _require_non_empty_str(arguments.get("rule_filename"), "rule_filename")
+    nuclei_filename = _require_non_empty_str(arguments.get("nuclei_filename"), "nuclei_filename")
     collection_name = arguments.get("collection_name")
-
-    if not isinstance(hub_dir, str) or not hub_dir.strip():
-        raise ValueError("'hub_dir' must be a non-empty string pointing to a local CrowdSec hub clone")
-    if not isinstance(rule_yaml, str) or not rule_yaml.strip():
-        raise ValueError("'rule_yaml' must be a non-empty string containing the WAF rule")
-    if not isinstance(test_config_yaml, str) or not test_config_yaml.strip():
-        raise ValueError("'test_config_yaml' must be a non-empty string containing the test config.yaml")
-    if not isinstance(test_nuclei_yaml, str) or not test_nuclei_yaml.strip():
-        raise ValueError("'test_nuclei_yaml' must be a non-empty string containing the adapted nuclei template")
-    if not isinstance(rule_filename, str) or not rule_filename.strip():
-        raise ValueError("'rule_filename' must be a non-empty string")
-    if not isinstance(nuclei_filename, str) or not nuclei_filename.strip():
-        raise ValueError("'nuclei_filename' must be a non-empty string")
-    if collection_name is not None and (
-        not isinstance(collection_name, str) or not collection_name.strip()
-    ):
+    if collection_name is not None and (not isinstance(collection_name, str) or not collection_name.strip()):
         raise ValueError("'collection_name' must be a non-empty string when provided")
 
     hub_path = Path(hub_dir).expanduser()
+    hub_root = hub_path.resolve()
     if not hub_path.exists() or not hub_path.is_dir():
         raise ValueError(f"hub_dir does not exist or is not a directory: {hub_path}")
 
     rule_rel_path = Path(rule_filename.strip())
 
     rule_path = (hub_path / rule_rel_path).resolve()
-    if not _is_relative_to(hub_path.resolve(), rule_path):
+    if not _is_relative_to(hub_root, rule_path):
         raise ValueError("Resolved rule path escapes the hub directory")
 
     rule_path.parent.mkdir(parents=True, exist_ok=True)
@@ -872,7 +873,7 @@ def _tool_prepare_waf_pr(arguments: dict[str, Any] | None) -> list[types.TextCon
 
     test_dir_name = rule_path.stem
     tests_root = (hub_path / ".appsec-tests" / test_dir_name).resolve()
-    if not _is_relative_to(hub_path.resolve(), tests_root):
+    if not _is_relative_to(hub_root, tests_root):
         raise ValueError("Resolved test path escapes the hub directory")
     tests_root.mkdir(parents=True, exist_ok=True)
 
@@ -893,60 +894,12 @@ def _tool_prepare_waf_pr(arguments: dict[str, Any] | None) -> list[types.TextCon
     ]
 
     if collection_name:
-        normalized = collection_name.strip().lstrip("/")
-        if "/" not in normalized or normalized.count("/") != 1:
-            raise ValueError("'collection_name' must be in the format 'author/name'")
-        author, name = normalized.split("/", 1)
-        if not author or not name:
-            raise ValueError("'collection_name' must be in the format 'author/name'")
-        collection_file = (hub_path / "collections" / author / f"{name}.yaml").resolve()
-        if not _is_relative_to(hub_path.resolve(), collection_file):
-            raise ValueError("Resolved collection path escapes the hub directory")
-        if not collection_file.exists():
-            summary_lines.append(
-                f"- Warning: collection file not found at {collection_file}. Add the rule manually."
-            )
-        else:
-            try:
-                collection_payload = yaml.safe_load(collection_file.read_text(encoding="utf-8")) or {}
-            except yaml.YAMLError as exc:
-                raise RuntimeError(f"Failed to parse collection YAML at {collection_file}: {exc}") from exc
-            if not isinstance(collection_payload, dict):
-                raise RuntimeError(f"Collection YAML at {collection_file} must be a mapping")
-            appsec_rules = collection_payload.get("appsec-rules")
-            if appsec_rules is None:
-                appsec_rules = []
-                collection_payload["appsec-rules"] = appsec_rules
-            if not isinstance(appsec_rules, list):
-                raise RuntimeError("'appsec-rules' in the collection file must be a list")
-            try:
-                rule_payload = yaml.safe_load(rule_yaml) or {}
-            except yaml.YAMLError as exc:
-                raise RuntimeError(f"Failed to parse rule YAML to read the rule name: {exc}") from exc
-            if not isinstance(rule_payload, dict):
-                raise RuntimeError("Rule YAML must be a mapping to read the rule name")
-            rule_name = rule_payload.get("name")
-            if not isinstance(rule_name, str) or not rule_name.strip():
-                raise RuntimeError("Rule YAML must include a non-empty 'name' field to update the collection")
-            rule_name = rule_name.strip()
-            if rule_name not in appsec_rules:
-                appsec_rules.append(rule_name)
-                collection_file.write_text(
-                    yaml.safe_dump(collection_payload, sort_keys=False),
-                    encoding="utf-8",
-                )
-                summary_lines.append(
-                    f"- Updated collection: added {rule_name} to {collection_file}"
-                )
-            else:
-                summary_lines.append("- Collection already includes the rule; no update needed")
+        _update_collection_with_rule(summary_lines, hub_root, collection_name, rule_yaml)
     else:
-        summary_lines.append(
-            "- Warning: rule not added to appsec-virtual-patching collection. "
-            "Remember to add it before opening the PR."
-        )
+        summary_lines.append("- Warning: rule not added to appsec-virtual-patching collection. Remember to add it before opening the PR.")
 
     return [types.TextContent(type="text", text="\n".join(summary_lines))]
+
 
 def _tool_manage_waf_stack(arguments: dict[str, Any] | None) -> list[types.TextContent]:
     try:
@@ -973,9 +926,7 @@ def _tool_manage_waf_stack(arguments: dict[str, Any] | None) -> list[types.TextC
 
             if not target_url:
                 LOGGER.error("WAF stack start returned no target URL and no explicit error")
-                raise RuntimeError(
-                    "WAF stack start error: stack did not return a service URL and reported no specific error."
-                )
+                raise RuntimeError("WAF stack start error: stack did not return a service URL and reported no specific error.")
 
             return [
                 types.TextContent(
@@ -1099,6 +1050,7 @@ def _tool_run_waf_tests(arguments: dict[str, Any] | None) -> list[types.TextCont
             except Exception as stop_exc:  # pragma: no cover - best effort cleanup
                 LOGGER.warning("Failed to stop WAF stack during cleanup: %s", stop_exc)
 
+
 def _search_repo_for_cve(repo_path: Path, cve: str) -> list[Path]:
     """Return files whose name contains the CVE identifier (case-insensitive)."""
     lower_token = cve.lower()
@@ -1145,9 +1097,7 @@ def _tool_fetch_nuclei_exploit(arguments: dict[str, Any] | None) -> list[types.T
 
             if repo_path.exists():
                 if not (repo_path / ".git").exists():
-                    raise RuntimeError(
-                        f"Destination {repo_path} exists but is not a git repository"
-                    )
+                    raise RuntimeError(f"Destination {repo_path} exists but is not a git repository")
                 git_cmd = ["git", "-C", str(repo_path), "pull", "--ff-only"]
             else:
                 git_cmd = ["git", "clone", "--depth", "1", cleaned_url, str(repo_path)]
@@ -1181,9 +1131,7 @@ def _tool_fetch_nuclei_exploit(arguments: dict[str, Any] | None) -> list[types.T
                 except OSError as read_err:
                     findings.append(f"    (failed to read {relative_path}: {read_err})")
                     continue
-                rendered_templates.append(
-                    f"### {cleaned_url} :: {relative_path}\n```yaml\n{file_contents}\n```"
-                )
+                rendered_templates.append(f"### {cleaned_url} :: {relative_path}\n```yaml\n{file_contents}\n```")
                 total_files += 1
 
         if total_files == 0:
@@ -1192,10 +1140,7 @@ def _tool_fetch_nuclei_exploit(arguments: dict[str, Any] | None) -> list[types.T
             return [
                 types.TextContent(
                     type="text",
-                    text=(
-                        f"No files containing {cve} were found in the provided repositories."
-                        f"{detail_section}"
-                    ),
+                    text=(f"No files containing {cve} were found in the provided repositories.{detail_section}"),
                 )
             ]
 
@@ -1242,9 +1187,7 @@ def _tool_curl_waf_endpoint(arguments: dict[str, Any] | None) -> list[types.Text
         if not path.startswith("/"):
             if "://" in path:
                 parsed = urllib.parse.urlparse(path)
-                path = urllib.parse.urlunparse(
-                    ("", "", parsed.path or "/", parsed.params, parsed.query, parsed.fragment)
-                )
+                path = urllib.parse.urlunparse(("", "", parsed.path or "/", parsed.params, parsed.query, parsed.fragment))
             else:
                 path = "/" + path
 
@@ -1252,9 +1195,7 @@ def _tool_curl_waf_endpoint(arguments: dict[str, Any] | None) -> list[types.Text
             LOGGER.warning("curl_waf_endpoint received non-string body payload")
             raise ValueError("'body' must be a string when provided")
 
-        LOGGER.info(
-            "curl_waf_endpoint executing %s request to %s (timeout=%s)", method, path, timeout
-        )
+        LOGGER.info("curl_waf_endpoint executing %s request to %s (timeout=%s)", method, path, timeout)
         try:
             response = requests.request(
                 method=method,
@@ -1267,12 +1208,7 @@ def _tool_curl_waf_endpoint(arguments: dict[str, Any] | None) -> list[types.Text
             raise RuntimeError(f"HTTP request failed: {req_err}") from req_err
 
         header_lines = "\n".join(f"{k}: {v}" for k, v in response.headers.items())
-        response_text = (
-            f">>> {method} http://localhost:8081{path}\n"
-            f"Status: {response.status_code}\n"
-            f"Headers:\n{header_lines}\n\n"
-            f"Body:\n{response.text}"
-        )
+        response_text = f">>> {method} http://localhost:8081{path}\nStatus: {response.status_code}\nHeaders:\n{header_lines}\n\nBody:\n{response.text}"
 
         LOGGER.info(
             "curl_waf_endpoint completed with status %s for %s %s",
@@ -1439,10 +1375,7 @@ WAF_TOOLS: list[types.Tool] = [
     ),
     types.Tool(
         name="prepare_waf_pr",
-        description=(
-            "Help prepare a pull request in a local clone of the CrowdSec hub repository by adding the generated WAF rule "
-            "and associated test files."
-        ),
+        description=("Help prepare a pull request in a local clone of the CrowdSec hub repository by adding the generated WAF rule and associated test files."),
         inputSchema={
             "type": "object",
             "properties": {
