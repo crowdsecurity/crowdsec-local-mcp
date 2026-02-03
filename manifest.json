@@ -56,8 +56,8 @@
       "description": "Get the WAF test generation prompt for producing config.yaml and adapted Nuclei templates"
     },
     {
-      "name": "get_waf_tests_prompt",
-      "description": "Get the WAF test authoring prompt for producing config.yaml and adapted Nuclei templates"
+      "name": "get_waf_pr_prompt",
+      "description": "Get the WAF PR preparation prompt for writing test assets and drafting a PR comment"
     },
     {
       "name": "run_waf_tests",

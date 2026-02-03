@@ -28,6 +28,7 @@ WAF_PROMPT_FILE = PROMPTS_DIR / "prompt-waf.txt"
 WAF_EXAMPLES_FILE = PROMPTS_DIR / "prompt-waf-examples.txt"
 WAF_DEPLOY_FILE = PROMPTS_DIR / "prompt-waf-deploy.txt"
 WAF_TESTS_PROMPT_FILE = PROMPTS_DIR / "prompt-waf-tests.txt"
+WAF_PR_PROMPT_FILE = PROMPTS_DIR / "prompt-waf-pr.txt"
 
 CROWDSEC_SCHEMAS_DIR = SCRIPT_DIR / "yaml-schemas"
 WAF_SCHEMA_FILE = CROWDSEC_SCHEMAS_DIR / "appsec_rules_schema.yaml"
@@ -761,17 +762,17 @@ def _tool_generate_waf_tests(arguments: dict[str, Any] | None) -> list[types.Tex
         raise RuntimeError(f"Error generating WAF test prompt: {exc!s}") from exc
 
 
-def _tool_get_waf_tests_prompt(_: dict[str, Any] | None) -> list[types.TextContent]:
+def _tool_get_waf_pr_prompt(_: dict[str, Any] | None) -> list[types.TextContent]:
     try:
-        LOGGER.info("Serving WAF tests prompt content")
-        prompt_content = WAF_TESTS_PROMPT_FILE.read_text(encoding="utf-8")
+        LOGGER.info("Serving WAF PR prompt content")
+        prompt_content = WAF_PR_PROMPT_FILE.read_text(encoding="utf-8")
         return [types.TextContent(type="text", text=prompt_content)]
     except FileNotFoundError as exc:
-        LOGGER.error("WAF tests prompt file not found at %s", WAF_TESTS_PROMPT_FILE)
-        raise FileNotFoundError(f"WAF tests prompt file not found at {WAF_TESTS_PROMPT_FILE}") from exc
+        LOGGER.error("WAF PR prompt file not found at %s", WAF_PR_PROMPT_FILE)
+        raise FileNotFoundError(f"WAF PR prompt file not found at {WAF_PR_PROMPT_FILE}") from exc
     except Exception as exc:
-        LOGGER.error("Error reading WAF tests prompt: %s", exc)
-        raise RuntimeError(f"Error reading WAF tests prompt: {exc!s}") from exc
+        LOGGER.error("Error reading WAF PR prompt: %s", exc)
+        raise RuntimeError(f"Error reading WAF PR prompt: {exc!s}") from exc
 
 
 def _tool_validate_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextContent]:
@@ -1296,7 +1297,7 @@ WAF_TOOL_HANDLERS: dict[str, ToolHandler] = {
     "get_waf_prompt": _tool_get_waf_prompt,
     "get_waf_examples": _tool_get_waf_examples,
     "generate_waf_rule": _tool_generate_waf_rule,
-    "get_waf_tests_prompt": _tool_get_waf_tests_prompt,
+    "get_waf_pr_prompt": _tool_get_waf_pr_prompt,
     "generate_waf_tests": _tool_generate_waf_tests,
     "validate_waf_rule": _tool_validate_waf_rule,
     "lint_waf_rule": _tool_lint_waf_rule,
@@ -1369,8 +1370,8 @@ WAF_TOOLS: list[types.Tool] = [
         },
     ),
     types.Tool(
-        name="get_waf_tests_prompt",
-        description="Get the WAF test authoring prompt for producing config.yaml and adapted Nuclei templates",
+        name="get_waf_pr_prompt",
+        description="Get the WAF PR preparation prompt for writing test assets and drafting a PR comment",
         inputSchema={
             "type": "object",
             "properties": {},
@@ -1588,6 +1589,12 @@ WAF_RESOURCES: list[types.Resource] = [
         description="Instructions for producing config.yaml and adapted Nuclei templates for WAF testing",
         mimeType="text/plain",
     ),
+    types.Resource(
+        uri="file://prompts/prompt-waf-pr.txt",
+        name="WAF PR Preparation Prompt",
+        description="Short guidance for preparing WAF PR assets and drafting a PR comment",
+        mimeType="text/plain",
+    ),
 ]
 
 WAF_RESOURCE_READERS: dict[str, Callable[[], str]] = {
@@ -1596,6 +1603,7 @@ WAF_RESOURCE_READERS: dict[str, Callable[[], str]] = {
     "file://prompts/prompt-waf-examples.txt": lambda: WAF_EXAMPLES_FILE.read_text(encoding="utf-8"),
     "file://prompts/prompt-waf-deploy.txt": lambda: WAF_DEPLOY_FILE.read_text(encoding="utf-8"),
     "file://prompts/prompt-waf-tests.txt": lambda: WAF_TESTS_PROMPT_FILE.read_text(encoding="utf-8"),
+    "file://prompts/prompt-waf-pr.txt": lambda: WAF_PR_PROMPT_FILE.read_text(encoding="utf-8"),
 }
 
 REGISTRY.register_tools(WAF_TOOL_HANDLERS, WAF_TOOLS)

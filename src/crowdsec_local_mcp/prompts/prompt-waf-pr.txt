@@ -1,0 +1,10 @@
+You are preparing a CrowdSec WAF pull request in a local hub clone.
+
+Use these instructions as the authoritative spec for the test assets you must add. Create the required files under `.appsec-tests/<test_name>/` and ensure `config.yaml` references the exact rule path that was generated.
+
+When the files are ready, draft a short PR comment the user can paste. The comment should include:
+- A one-line summary of the rule and tests added.
+- A list of files added or updated.
+- How to run or validate the tests (short, practical guidance).
+
+Return only the PR comment text, ready to paste, with no extra explanations.

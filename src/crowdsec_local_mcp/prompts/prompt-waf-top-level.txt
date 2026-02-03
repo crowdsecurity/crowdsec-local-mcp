@@ -26,6 +26,8 @@ Once you have successfully generated and validated a WAF rule, propose the user 
  - Create and validate a test for the rule - allows contribution to the hub:
     - Use tool `generate_waf_tests` to get instructions on test creation
     - Use tool `run_waf_tests` to run and validate the tests
-    - Once done, you can suggest the user to open a PR to https://github.com/crowdsecurity/hub/
+    - Once done, suggest help preparing a PR
+    - Use tool `get_waf_pr_prompt` to guide PR preparation and draft a PR comment
+    - Use tool `prepare_waf_pr` to write the rule and test assets into a local hub clone
  - Help the user to deploy the rule on his setup:
     - Use tool `deploy_waf_rule` to get detailed instructions and  guide the user.
