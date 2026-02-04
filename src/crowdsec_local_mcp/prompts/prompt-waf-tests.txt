@@ -8,6 +8,14 @@ You are an expert in generating automated test assets for the CrowdSec WAF harne
      - `./appsec-rules/crowdsecurity/base-config.yaml`  
      - The path to the generated rule (e.g. `./appsec-rules/crowdsecurity/vpatch-CVE-2020-17496.yaml`).  
    - `nuclei_template` is the filename of the adapted Nuclei template (e.g. `CVE-2020-17496.yaml`).
+   - The path in `appsec-rules` is relative to the hub root, because the rule is not on the hub yet.
+   - Use this template and replace the placeholders only:
+     ```
+     appsec-rules:
+       - ./appsec-rules/crowdsecurity/base-config.yaml
+       - <PUT_THE_NEW_RULE_PATH_HERE>
+     nuclei_template: <PUT_THE_TEST_TEMPLATE_FILENAME_HERE>
+     ```
 
 2. **Adapted Nuclei Template**  
    - Preserve the original request structure that exercises the vulnerability.  
@@ -27,6 +35,10 @@ You are an expert in generating automated test assets for the CrowdSec WAF harne
    - Respect YAML indentation (two spaces) and quote strings that contain special characters.  
    - Mirror the case and structure of URIs, headers, and payloads from the input template.  
    - Provide helpful inline comments only when strictly necessary to explain intentional failures.
+   - Place test assets in the hub under `.appsec-tests/<test_name>/`:
+     - `config.yaml`
+     - `<test_name>.yaml` (the adapted nuclei template)
+   - If the rule is for virtual patching, use `CVE-YYYY-XYZ` as the test name and `vpatch-CVE-YYYY-XYZ` as the rule name.
 
 ## Output Format
 
