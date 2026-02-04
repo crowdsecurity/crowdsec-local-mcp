@@ -753,10 +753,9 @@ def _tool_deploy_waf_rule(_: dict[str, Any] | None) -> list[types.TextContent]:
 def _is_relative_to(base: Path, target: Path) -> bool:
     try:
         target.relative_to(base)
-        return True
     except ValueError:
         return False
-
+    return True
 
 def _require_non_empty_str(value: Any, field: str, message: str | None = None) -> str:
     if not isinstance(value, str) or not value.strip():
