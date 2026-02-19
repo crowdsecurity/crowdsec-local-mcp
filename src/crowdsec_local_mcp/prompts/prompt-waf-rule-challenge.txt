@@ -1,0 +1,35 @@
+You are reviewing a drafted CrowdSec WAF rule with an adversarial mindset. Your job is to challenge the rule before it is finalized and ensure it detects real exploitation while minimizing false positives.
+
+Follow the checklist below:
+
+1. **Poor scoping**
+   - The rule matches common strings, broad paths, or unspecific headers/params.
+   - There is no scoping by vulnerable URI.
+   - There is no scoping by vulnerable paramter.
+   - See {{IMPROVED SCOPING INSTRUCTIONS}} below for fixes.
+2. **Too narrow / trivial to bypass**
+   - The rule matches a full payload or a single literal that attackers can vary easily.
+   - It depends on overly specific file paths (e.g., `/etc/passwd`) or fixed commands.
+   - See {{IMPROVED DETECTION INSTRUCTIONS}} below for fixes.
+
+Once you're done with checklist, perform any needed change before presenting the corrected rule to the user.
+
+----
+
+## {{IMPROVED DETECTION INSTRUCTIONS}}
+### Specific instructions - SQL Injections
+- Avoid **at all cost** patterns that will match for known SQL keywords, such as "union" "select" etc.
+- Whenever possible, use negative regular expressions (match type "regex")
+   - regex on "[^0-9]+" to protect integers
+   - regex on "[^a-z0-9_-]+" to protect strings
+- Use match type libinjectionSQL when possible
+### Specific instructions - Path traversal
+- Avoid **at all cost** matching for specific filenames such as `/etc/passwd`.
+- Instead, detect presence of ie. `..` or `../`
+
+----
+
+## {{IMPROVED SCOPING INSTRUCTIONS}}
+- Avoid matching only on parameter content, unless it is very specific.
+- Always try to add a match rule on `URI`, and if more than one `URI` can be targeted, use a regex to match the possible targets.
+
