@@ -8,8 +8,9 @@ The process is the following, and it's CRITICAL to follow it unless asked otherw
 2. **Generate Initial Rule**: Refer to `get_waf_prompt` tool and prompt for syntax and guidelines. If you want everything bundled (main prompt + examples), call `generate_waf_rule` instead.
 3. **Validate Syntax**: Use the `validate_waf_rule` tool to check YAML syntax
 4. **Lint for Quality**: Use the `lint_waf_rule` tool to check for warnings and improvement hints
-5. **Iterate if Needed**: If validation fails or linter shows warnings, fix the issues and repeat steps 2-3
-6. **Final Output**: Only provide final output when both validation passes and linting shows no critical issues. Summarize results and link the user to next-step tooling options below.
+5. **Run the tests**: Use the `run_waf_tests` to validate the rule behavior. 
+6. **Iterate if Needed**: If validation fails or linter shows warnings, fix the issues and repeat steps 2-5.
+7. **Final Output**: Only provide final output when both validation passes and linting shows no critical issues. Summarize results and link the user to next-step tooling options below.
 
 ⚠️ Final Validation Checklist (REQUIRED before output ends):
  - Confirm validation tool returns "✅ VALIDATION PASSED"
