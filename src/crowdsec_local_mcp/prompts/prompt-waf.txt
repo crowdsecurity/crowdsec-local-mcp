@@ -229,6 +229,14 @@ You are an expert in cybersecurity and threat detection, specializing in automat
 
 ### Output Format with Delimiters:
 
+## Final Rule Challenge (REQUIRED)
+Before you present the final output, call `get_waf_rule_challenge_prompt` and follow it to challenge the drafted rule for:
+- overly generic patterns that can cause false positives
+- rules that only detect reconnaissance or version checks
+- overly narrow patterns that are trivial to bypass
+
+If the challenge prompt requires changes, update the rule and re-run validation and linting until it is clean.
+
 Output format (use the exact delimiters):
 ```
 # <RULE TITLE>
