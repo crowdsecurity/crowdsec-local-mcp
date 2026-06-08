@@ -222,7 +222,10 @@ async def handle_list_resources() -> list[types.Resource]:
 @server.read_resource()
 async def handle_read_resource(uri: str) -> str:
     LOGGER.info("Reading resource content for %s", uri)
-    reader = REGISTRY.get_resource_reader(uri)
+    # The MCP framework passes an AnyUrl object at runtime, not a str.
+    # Convert to str so the lookup matches the string keys in _resource_readers.
+    uri_str = str(uri)
+    reader = REGISTRY.get_resource_reader(uri_str)
     return reader()
 
 
