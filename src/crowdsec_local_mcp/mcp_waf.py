@@ -51,6 +51,8 @@ DEFAULT_EXPLOIT_REPOSITORIES = [
 DEFAULT_EXPLOIT_TARGET_DIR = SCRIPT_DIR / "cached-exploits"
 
 CASE_SENSITIVE_MATCH_TYPES = ["regex", "contains", "startsWith", "endsWith", "equals"]
+# Highest ASCII code point; values above it are non-ASCII and risk breaking SecLang.
+MAX_ASCII_CODEPOINT = 127
 SQL_KEYWORD_INDICATORS = ["union", "select", "insert", "update", "delete", "drop"]
 
 _COMPOSE_STACK_PROCESS: subprocess.Popen | None = None
@@ -396,7 +398,7 @@ def _stop_waf_test_stack() -> None:
     _teardown_compose_stack(check=True)
 
 
-def _validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
+def validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
     """Validate that a CrowdSec WAF rule YAML conforms to the schema."""
     LOGGER.info("Validating WAF rule YAML (size=%s bytes)", len(rule_yaml.encode("utf-8")))
     if not WAF_SCHEMA_FILE.exists():
@@ -441,39 +443,22 @@ def _validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
     ]
 
 
-def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> tuple[bool, bool]:
-    """Recursively inspect rule items, track operator usage, and record warnings."""
+def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> None:
+    """Recursively inspect rule items and record warnings."""
     if not isinstance(rule_item, dict):
-        return (False, False)
+        return
 
     location = f"rules{rule_path}" if rule_path else "rules"
     has_and = "and" in rule_item
     has_or = "or" in rule_item
-    contains_and = has_and
-    contains_or = has_or
-
-    if has_and and has_or:
-        warnings.append(f"{location} mixes 'and' and 'or' operators at the same level; split them into separate nested blocks")
 
     if has_and:
         for i, sub_rule in enumerate(rule_item["and"]):
-            child_and, child_or = _analyze_rule_item(
-                sub_rule,
-                f"{rule_path}.and[{i}]",
-                warnings,
-            )
-            contains_and = contains_and or child_and
-            contains_or = contains_or or child_or
+            _analyze_rule_item(sub_rule, f"{rule_path}.and[{i}]", warnings)
 
     if has_or:
         for i, sub_rule in enumerate(rule_item["or"]):
-            child_and, child_or = _analyze_rule_item(
-                sub_rule,
-                f"{rule_path}.or[{i}]",
-                warnings,
-            )
-            contains_and = contains_and or child_and
-            contains_or = contains_or or child_or
+            _analyze_rule_item(sub_rule, f"{rule_path}.or[{i}]", warnings)
 
     if "match" in rule_item and not (has_and or has_or):
         match = rule_item["match"]
@@ -497,14 +482,25 @@ def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> t
                     keywords_str = ", ".join(sorted(set(sql_keywords)))
                     warnings.append(f"Match at {location} contains SQL keyword(s) ({keywords_str}); instead of keyword blacklisting, detect escaping characters like quotes or semicolons")
 
+                # A raw double-quote is emitted inside a double-quoted SecLang
+                # value and breaks the generated rule; the hex escape is safe.
+                if '"' in match_value:
+                    warnings.append(f"Match at {location} contains a literal double-quote; replace it with the hex escape '\\x22' to avoid generating invalid SecLang")
+
+                unusual = sorted({c for c in match_value if not c.isprintable() or ord(c) > MAX_ASCII_CODEPOINT})
+                if unusual:
+                    rendered = ", ".join(repr(c) for c in unusual)
+                    warnings.append(
+                        f"Match at {location} contains uncommon character(s) ({rendered}) that may generate "
+                        "invalid SecLang; escape them as byte hex escapes like '\\xHH' (repeat per byte as needed, e.g. UTF-8)"
+                    )
+
                 transforms = rule_item.get("transform", [])
                 if isinstance(transforms, list) and "urldecode" in transforms:
                     if "%" in match_value:
                         warnings.append(
                             f"Match at {location} applies 'urldecode' but still contains percent-encoded characters; ensure the value is properly decoded or add another urldecode pass."
                         )
-
-    return (contains_and, contains_or)
 
 
 def lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
@@ -545,9 +541,7 @@ def lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
 
     if "rules" in parsed and isinstance(parsed["rules"], list):
         for i, rule in enumerate(parsed["rules"]):
-            rule_has_and, rule_has_or = _analyze_rule_item(rule, f"[{i}]", warnings)
-            if rule_has_and and rule_has_or:
-                warnings.append(f"rules[{i}] uses both 'and' and 'or' operators somewhere in the block; CrowdSec cannot mix them in one rule, split the logic into separate rules")
+            _analyze_rule_item(rule, f"[{i}]", warnings)
 
     result_lines: list[str] = []
 
@@ -730,7 +724,7 @@ def _tool_validate_waf_rule(arguments: dict[str, Any] | None) -> list[types.Text
         raise TypeError("rule_yaml must be provided as a string")
 
     LOGGER.info("Received validation request for WAF rule")
-    return _validate_waf_rule(rule_yaml)
+    return validate_waf_rule(rule_yaml)
 
 
 def _tool_lint_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextContent]:

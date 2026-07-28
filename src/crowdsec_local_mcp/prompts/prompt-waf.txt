@@ -85,6 +85,7 @@ You are an expert in cybersecurity and threat detection, specializing in automat
      - `libinjectionSQL`, `libinjectionXSS`,
      - `gt`, `lt`, `gte`, `lte`
    - The `value` is the string pattern used for comparison. Quote the value as soon as it contains special chars.
+   - To match a literal double-quote (e.g. XSS payloads), set the YAML value to the *literal* hex escape `\x22` (e.g. `value: '\x22'` or `value: "\\x22"`), never a raw `"`. A raw `"` in a value produces invalid SecLang and breaks the rule. Apply the same `\xHH` byte escape (repeat per byte as needed) to any other uncommon or non-printable character.
    - You **must** also apply a `lowercase` transformation in `transform:` to ensure input normalization.
 
 
@@ -191,10 +192,9 @@ You are an expert in cybersecurity and threat detection, specializing in automat
    - prefix all variable names with `json.`
 
 ✅ **For Exploit that are using several successive requests**:
-   - Only match the most relevant URI, do not try to make a rule that matches multiple URLs.
-   - ANY RULE THAT USE BOTH `AND` AND `OR` WILL MAKE THE TASK FAIL.
+   - Prefer matching the single most relevant URI. When more than one request must be matched, you can OR together several `and` blocks — mixing `and` and `or` across nesting levels is supported.
 ```
-#GOOD:
+#GOOD (single relevant URI):
   - and:
       - zones:
           - URI
@@ -205,7 +205,7 @@ You are an expert in cybersecurity and threat detection, specializing in automat
           type: contains
           #the interesting url is /src/addressbook.php
           value: '/src/addressbook.php'
-#BAD:
+#GOOD (OR of several AND blocks):
   - or:
       - and:
           - zones:
