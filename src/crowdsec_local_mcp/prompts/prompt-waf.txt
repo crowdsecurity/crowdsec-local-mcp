@@ -85,7 +85,7 @@ You are an expert in cybersecurity and threat detection, specializing in automat
      - `libinjectionSQL`, `libinjectionXSS`,
      - `gt`, `lt`, `gte`, `lte`
    - The `value` is the string pattern used for comparison. Quote the value as soon as it contains special chars.
-   - To match a literal double-quote (e.g. XSS payloads), set the value to the hex escape `\x22`, never a raw `"`. A raw `"` in a value produces invalid SecLang and breaks the rule. Apply the same `\xHH` hex escape to any other uncommon or non-printable character.
+   - To match a literal double-quote (e.g. XSS payloads), set the YAML value to the *literal* hex escape `\x22` (e.g. `value: '\x22'` or `value: "\\x22"`), never a raw `"`. A raw `"` in a value produces invalid SecLang and breaks the rule. Apply the same `\xHH` byte escape (repeat per byte as needed) to any other uncommon or non-printable character.
    - You **must** also apply a `lowercase` transformation in `transform:` to ensure input normalization.
 
 
