@@ -490,7 +490,10 @@ def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> N
                 unusual = sorted({c for c in match_value if not c.isprintable() or ord(c) > MAX_ASCII_CODEPOINT})
                 if unusual:
                     rendered = ", ".join(repr(c) for c in unusual)
-                    warnings.append(f"Match at {location} contains uncommon character(s) ({rendered}) that may generate invalid SecLang; escape them as byte hex escapes like '\\xHH' (repeat per byte as needed, e.g. UTF-8)")
+                    warnings.append(
+                        f"Match at {location} contains uncommon character(s) ({rendered}) that may generate "
+                        "invalid SecLang; escape them as byte hex escapes like '\\xHH' (repeat per byte as needed, e.g. UTF-8)"
+                    )
 
                 transforms = rule_item.get("transform", [])
                 if isinstance(transforms, list) and "urldecode" in transforms:
