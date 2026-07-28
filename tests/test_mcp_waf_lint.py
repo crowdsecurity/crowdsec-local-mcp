@@ -13,7 +13,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 try:  # pragma: no cover - import guard for optional dependency
-    from crowdsec_local_mcp.mcp_waf import lint_waf_rule, _validate_waf_rule
+    from crowdsec_local_mcp.mcp_waf import lint_waf_rule, validate_waf_rule
 except ModuleNotFoundError as exc:  # pragma: no cover - handled by pytest skip
     pytest.skip(
         reason=f"crowdsec_local_mcp dependency missing: {exc}",
@@ -73,8 +73,8 @@ def test_same_level_and_or_rejected_by_schema() -> None:
         """
     ).strip()
 
-    with pytest.raises(ValueError):
-        _validate_waf_rule(rule_yaml)
+    with pytest.raises(ValueError, match="Schema validation error"):
+        validate_waf_rule(rule_yaml)
 
 
 def test_case_sensitivity_warning() -> None:

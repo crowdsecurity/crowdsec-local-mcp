@@ -51,6 +51,8 @@ DEFAULT_EXPLOIT_REPOSITORIES = [
 DEFAULT_EXPLOIT_TARGET_DIR = SCRIPT_DIR / "cached-exploits"
 
 CASE_SENSITIVE_MATCH_TYPES = ["regex", "contains", "startsWith", "endsWith", "equals"]
+# Highest ASCII code point; values above it are non-ASCII and risk breaking SecLang.
+MAX_ASCII_CODEPOINT = 127
 SQL_KEYWORD_INDICATORS = ["union", "select", "insert", "update", "delete", "drop"]
 
 _COMPOSE_STACK_PROCESS: subprocess.Popen | None = None
@@ -396,7 +398,7 @@ def _stop_waf_test_stack() -> None:
     _teardown_compose_stack(check=True)
 
 
-def _validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
+def validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
     """Validate that a CrowdSec WAF rule YAML conforms to the schema."""
     LOGGER.info("Validating WAF rule YAML (size=%s bytes)", len(rule_yaml.encode("utf-8")))
     if not WAF_SCHEMA_FILE.exists():
@@ -485,7 +487,7 @@ def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> N
                 if '"' in match_value:
                     warnings.append(f"Match at {location} contains a literal double-quote; replace it with the hex escape '\\x22' to avoid generating invalid SecLang")
 
-                unusual = sorted({c for c in match_value if not c.isprintable() or ord(c) > 127})
+                unusual = sorted({c for c in match_value if not c.isprintable() or ord(c) > MAX_ASCII_CODEPOINT})
                 if unusual:
                     rendered = ", ".join(repr(c) for c in unusual)
                     warnings.append(f"Match at {location} contains uncommon character(s) ({rendered}) that may generate invalid SecLang; escape them as '\\xHH'")
@@ -719,7 +721,7 @@ def _tool_validate_waf_rule(arguments: dict[str, Any] | None) -> list[types.Text
         raise TypeError("rule_yaml must be provided as a string")
 
     LOGGER.info("Received validation request for WAF rule")
-    return _validate_waf_rule(rule_yaml)
+    return validate_waf_rule(rule_yaml)
 
 
 def _tool_lint_waf_rule(arguments: dict[str, Any] | None) -> list[types.TextContent]:
