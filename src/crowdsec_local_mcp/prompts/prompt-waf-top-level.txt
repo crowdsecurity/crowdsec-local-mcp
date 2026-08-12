@@ -10,6 +10,8 @@ The process is the following, and it's CRITICAL to follow it unless asked otherw
 4. **Lint for Quality**: Use the `lint_waf_rule` tool to check for warnings and improvement hints
 5. **Run the tests**: Use the `run_waf_tests` to validate the rule behavior. 
 6. **Iterate if Needed**: If validation fails or linter shows warnings, fix the issues and repeat steps 2-5.
+    - Validation is per-content, not per-session: a previous "✅ VALIDATION PASSED" only ever applied to the exact YAML you submitted. Any edit, however small, voids it.
+    - So re-run `validate_waf_rule` on the *exact* rule you are about to test or ship, not on an earlier draft of it.
 7. **Final Output**: Only provide final output when both validation passes and linting shows no critical issues. Summarize results and link the user to next-step tooling options below.
 
 ⚠️ Final Validation Checklist (REQUIRED before output ends):
