@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import tempfile
 import time
@@ -44,6 +45,12 @@ WAF_TEST_PROJECT_NAME = "crowdsec-mcp-waf"
 WAF_TEST_NETWORK_NAME = f"{WAF_TEST_PROJECT_NAME}_waf-net"
 WAF_DEFAULT_TARGET_URL = "http://nginx-appsec"
 WAF_DEFAULT_NUCLEI_IMAGE = "projectdiscovery/nuclei:latest"
+# Fixed container_name values from the compose file; used for conflict remediation.
+WAF_TEST_CONTAINER_NAMES = ("crowdsec-appsec", "nginx-appsec", "app-backend")
+
+# Banner prefixing every refusal to act on an invalid rule. Callers match on it to
+# tell a rule problem apart from an infrastructure problem.
+RULE_VALIDATION_FAILED = "RULE VALIDATION FAILED"
 
 DEFAULT_EXPLOIT_REPOSITORIES = [
     "https://github.com/projectdiscovery/nuclei-templates.git",
@@ -126,6 +133,88 @@ def _run_compose_exec(args: list[str], capture_output: bool = True, check: bool 
     return _run_compose_command(exec_args, capture_output=capture_output, check=check)
 
 
+_CONTAINER_NAME_CONFLICT_RE = re.compile(
+    r'container name\s+"?/?(?P<name>[^"\s]+)"?\s+is already in use',
+    re.IGNORECASE,
+)
+
+
+def _conflicting_container_names(message: str) -> list[str]:
+    """Container names Docker reports as already taken, from a compose error message."""
+    return [match.group("name").lstrip("/") for match in _CONTAINER_NAME_CONFLICT_RE.finditer(message)]
+
+
+def _container_compose_project(name: str) -> str | None:
+    """Compose project a container belongs to, or None if it does not exist."""
+    cmd = [
+        "docker",
+        "inspect",
+        "-f",
+        '{{ index .Config.Labels "com.docker.compose.project" }}',
+        name,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return None
+    return (result.stdout or "").strip()
+
+
+def _remove_own_containers(names: list[str]) -> tuple[list[str], list[str]]:
+    """Force-remove containers, but only the ones this harness owns.
+
+    `container_name` in the compose file is a global Docker name, so a container holding
+    it may belong to something the user started by hand. Deleting that would be
+    destructive, so foreign containers are reported back instead of removed.
+    """
+    removed: list[str] = []
+    foreign: list[str] = []
+    for name in names:
+        project = _container_compose_project(name)
+        if project is None:
+            continue
+        if project != WAF_TEST_PROJECT_NAME:
+            LOGGER.warning("Container %s belongs to project %r; refusing to remove it", name, project)
+            foreign.append(name)
+            continue
+        cmd = ["docker", "rm", "-f", name]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            removed.append(name)
+        else:
+            LOGGER.warning("Failed to remove container %s: %s", name, (result.stderr or "").strip())
+    return removed, foreign
+
+
+def _compose_up_with_conflict_recovery(args: list[str]) -> None:
+    """Run `docker compose up ...`, clearing a leftover container name once if needed.
+
+    A surviving container from an earlier MCP process holds the fixed container_name and
+    makes every subsequent start fail identically, so retrying without cleanup is futile.
+    """
+    try:
+        _run_compose_command(args)
+    except RuntimeError as error:
+        names = _conflicting_container_names(str(error))
+        if not names:
+            raise
+        LOGGER.warning("Container name conflict on %s; cleaning up before one retry", ", ".join(names))
+        ensure_docker_cli()
+        _teardown_compose_stack(check=False)
+        removed, foreign = _remove_own_containers(names)
+        if foreign:
+            raise RuntimeError(
+                f"Cannot start the WAF stack: container(s) {', '.join(foreign)} hold the name(s) the "
+                "harness needs but belong to another project. Remove or rename them and retry."
+            ) from error
+        if not removed:
+            raise
+    else:
+        return
+
+    # Exactly one retry, deliberately straight-line so this can never loop.
+    _run_compose_command(args)
+
+
 def _teardown_compose_stack(check: bool = True) -> None:
     """Stop the compose stack and ensure any supervising process is terminated."""
     global _COMPOSE_STACK_PROCESS
@@ -168,10 +257,97 @@ def _wait_for_crowdsec_ready(timeout: int = 90) -> None:
                 return
         except RuntimeError:
             pass
+
+        # An uncompilable AppSec rule kills CrowdSec outright. Say so now instead of
+        # waiting out the timeout and blaming readiness.
+        failures = _appsec_failure_lines(_collect_compose_logs(["crowdsec"], tail_lines=2000))
+        if failures:
+            raise RuntimeError(
+                "CrowdSec could not build the AppSec engine and stopped:\n" + "\n".join(failures[-5:])
+            )
+
         time.sleep(3)
 
     LOGGER.error("CrowdSec API did not become ready before timeout")
     raise RuntimeError("CrowdSec local API did not become ready in time")
+
+
+# CrowdSec logs "loading inband rule <name>" per rule and then "Loaded N inband rules".
+# Both are emitted *before* Coraza compiles anything, so they prove the rule was picked
+# up - not that it works. A rule that fails to compile is reported afterwards, fatally,
+# and takes the process down with it.
+_APPSEC_RULES_LOADED_RE = re.compile(r"Loaded (\d+) inband rules")
+_APPSEC_LOAD_FAILURE_MARKERS = (
+    "unable to load inband rule",
+    "unable to load outofband rule",
+    "failed to compile the directive",
+    "unable to initialize inband engine",
+    "unable to initialize outofband engine",
+    "unable to initialize runner",
+)
+
+
+def _appsec_failure_lines(logs: str) -> list[str]:
+    """Log lines showing CrowdSec could not build the AppSec engine."""
+    return [line for line in logs.splitlines() if any(marker in line for marker in _APPSEC_LOAD_FAILURE_MARKERS)]
+
+
+def _analyze_appsec_load_logs(logs: str, rule_name: str) -> str | None:
+    """Return why the rule is not usable, or None if CrowdSec loaded it.
+
+    Returns None when the logs are inconclusive: this check must never invent a failure,
+    because a false block here is worse than the missing signal it replaces.
+    """
+    if not logs:
+        return None
+
+    failed = _appsec_failure_lines(logs)
+    if failed:
+        return "CrowdSec rejected the rule:\n" + "\n".join(failed[-10:])
+
+    if not _APPSEC_RULES_LOADED_RE.search(logs):
+        # The AppSec config never finished building; let the normal flow report it.
+        return None
+
+    if f"loading inband rule {rule_name}" not in logs:
+        return (
+            f"CrowdSec finished loading its AppSec rules without ever loading {rule_name}. "
+            "The rule file and the appsec-config disagree about the rule name."
+        )
+
+    return None
+
+
+def _verify_rule_loaded(rule_name: str, timeout: int = 20) -> str | None:
+    """Confirm CrowdSec compiled the rule, or explain why it did not.
+
+    A healthy LAPI only proves the process is up; the engine happily serves traffic with
+    a rule it failed to compile, which surfaces later as a confusing "zero matches".
+    """
+    # LAPI answers before the AppSec config is built, so poll rather than read once.
+    deadline = time.time() + timeout
+    logs = ""
+    while time.time() < deadline:
+        # Wider window than the user-facing dump: startup emits ~100 lines of config-sync
+        # noise ahead of the loader lines, and LAPI chatter piles up after them.
+        logs = _collect_compose_logs(["crowdsec"], tail_lines=2000)
+        if _appsec_failure_lines(logs) or _APPSEC_RULES_LOADED_RE.search(logs):
+            break
+        time.sleep(2)
+
+    problem = _analyze_appsec_load_logs(logs, rule_name)
+    if problem is None:
+        LOGGER.info("Rule %s loaded by CrowdSec", rule_name)
+        return None
+
+    LOGGER.error("Rule %s did not load: %s", rule_name, problem)
+    return (
+        f"RULE FAILED TO LOAD - CrowdSec could not use '{rule_name}', so no test result "
+        f"would be meaningful.\n\n{problem}\n\n"
+        "The usual cause is a character in a `match.value` that ends the generated SecLang "
+        "string early - most often a literal double-quote, which must be written as the hex "
+        "escape \\x22."
+    )
 
 
 def _run_nuclei_container(
@@ -278,24 +454,27 @@ def _run_nuclei_container(
     return (True, "\n".join(summary_lines))
 
 
-def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
-    global _COMPOSE_STACK_PROCESS
-    LOGGER.info("Starting WAF test stack")
-    if not WAF_TEST_COMPOSE_FILE.exists():
-        LOGGER.error("Compose file missing at %s", WAF_TEST_COMPOSE_FILE)
+def _stage_rule_for_harness(rule_yaml: str) -> tuple[str | None, str | None]:
+    """Validate the rule and write it plus its appsec-config. Returns (rule_name, error).
+
+    Validation happens here rather than in the caller so the bytes that reach the harness
+    are always the bytes that were checked - an earlier ✅ says nothing about a rule that
+    has been edited since.
+    """
+    try:
+        rule_metadata = _validate_waf_rule_yaml(rule_yaml)
+    except ValueError as exc:
+        LOGGER.warning("Refusing to start WAF stack: rule failed validation: %s", exc)
         return (
             None,
-            "Docker compose stack not found; expected compose/waf-test/docker-compose.yml",
+            f"{RULE_VALIDATION_FAILED} - refusing to load an invalid rule into the harness.\n"
+            f"{exc}\n"
+            "Any test result would be meaningless because CrowdSec cannot compile this "
+            "rule. Fix the rule, then retry.",
         )
-
-    try:
-        rule_metadata = yaml.safe_load(rule_yaml) or {}
-    except yaml.YAMLError as exc:
-        LOGGER.error("Failed to parse WAF rule YAML: %s", exc)
-        return (None, f"Cannot parse WAF rule YAML: {exc}")
-
-    if not isinstance(rule_metadata, dict):
-        return (None, "WAF rule YAML must define a top-level mapping")
+    except (FileNotFoundError, RuntimeError) as exc:
+        LOGGER.error("Could not validate WAF rule before starting the stack: %s", exc)
+        return (None, f"Cannot validate WAF rule before starting the stack: {exc}")
 
     rule_name = rule_metadata.get("name")
     if not isinstance(rule_name, str) or not rule_name.strip():
@@ -322,6 +501,23 @@ def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
     WAF_TEST_APPSEC_CONFIG.parent.mkdir(parents=True, exist_ok=True)
     WAF_TEST_APPSEC_CONFIG.write_text(rendered_appsec_config, encoding="utf-8")
 
+    return (rule_name, None)
+
+
+def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
+    global _COMPOSE_STACK_PROCESS
+    LOGGER.info("Starting WAF test stack")
+    if not WAF_TEST_COMPOSE_FILE.exists():
+        LOGGER.error("Compose file missing at %s", WAF_TEST_COMPOSE_FILE)
+        return (
+            None,
+            "Docker compose stack not found; expected compose/waf-test/docker-compose.yml",
+        )
+
+    rule_name, prepare_error = _stage_rule_for_harness(rule_yaml)
+    if prepare_error or rule_name is None:
+        return (None, prepare_error)
+
     if _COMPOSE_STACK_PROCESS is not None:
         if _COMPOSE_STACK_PROCESS.poll() is None:
             LOGGER.warning("Stack start requested while previous stack still running")
@@ -332,7 +528,9 @@ def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
         _COMPOSE_STACK_PROCESS = None
 
     try:
-        _run_compose_command(["up", "-d", "crowdsec"])
+        # --force-recreate because a surviving container would keep serving the rule it
+        # compiled at boot: the bind-mounted file changes, the loaded rule does not.
+        _compose_up_with_conflict_recovery(["up", "-d", "--force-recreate", "crowdsec"])
     except RuntimeError as error:
         LOGGER.error("Failed to start CrowdSec container: %s", error)
         logs = _collect_compose_logs(["crowdsec"])
@@ -350,6 +548,14 @@ def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
         _teardown_compose_stack(check=False)
         return (None, f"{error}{log_section}")
 
+    # Bail before the slow nginx build if the engine could not compile the rule.
+    load_error = _verify_rule_loaded(rule_name)
+    if load_error:
+        logs = _collect_compose_logs(["crowdsec"])
+        log_section = f"\n\nCrowdSec logs:\n{logs}" if logs else ""
+        _teardown_compose_stack(check=False)
+        return (None, f"{load_error}{log_section}")
+
     compose_base = ensure_docker_compose_cli() + [
         "-p",
         WAF_TEST_PROJECT_NAME,
@@ -357,6 +563,10 @@ def _start_waf_test_stack(rule_yaml: str) -> tuple[str | None, str | None]:
         str(WAF_TEST_COMPOSE_FILE),
         "up",
         "--build",
+        # Refresh the base image the openresty bouncer is built on, so a cached layer
+        # does not pin us to an outdated bouncer.
+        "--pull",
+        "always",
         "--abort-on-container-exit",
     ]
 
@@ -398,8 +608,13 @@ def _stop_waf_test_stack() -> None:
     _teardown_compose_stack(check=True)
 
 
-def validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
-    """Validate that a CrowdSec WAF rule YAML conforms to the schema."""
+def _validate_waf_rule_yaml(rule_yaml: str) -> dict[str, Any]:
+    """Return the parsed rule mapping, or raise ValueError explaining why it is invalid.
+
+    Callers that are about to act on a rule (deploy it to the harness, write it into a
+    hub clone) use this instead of the MCP tool wrapper so the bytes they ship are the
+    bytes that got checked.
+    """
     LOGGER.info("Validating WAF rule YAML (size=%s bytes)", len(rule_yaml.encode("utf-8")))
     if not WAF_SCHEMA_FILE.exists():
         LOGGER.error("Schema file missing at %s", WAF_SCHEMA_FILE)
@@ -434,7 +649,24 @@ def validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
         LOGGER.error("Invalid schema encountered: %s", exc)
         raise RuntimeError(f"Invalid schema: {exc!s}") from exc
 
+    # Schema conformance is not enough: some match values are structurally valid
+    # YAML but generate invalid SecLang once compiled. Reject those here.
+    errors: list[str] = []
+    if isinstance(parsed.get("rules"), list):
+        for i, rule in enumerate(parsed["rules"]):
+            _analyze_rule_item(rule, f"[{i}]", [], errors)
+
+    if errors:
+        LOGGER.warning("WAF rule validation failed with %s SecLang error(s)", len(errors))
+        raise ValueError("; ".join(errors))
+
     LOGGER.info("WAF rule validation passed")
+    return parsed
+
+
+def validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
+    """Validate that a CrowdSec WAF rule YAML conforms to the schema."""
+    _validate_waf_rule_yaml(rule_yaml)
     return [
         types.TextContent(
             type="text",
@@ -443,8 +675,12 @@ def validate_waf_rule(rule_yaml: str) -> list[types.TextContent]:
     ]
 
 
-def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> None:
-    """Recursively inspect rule items and record warnings."""
+def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str], errors: list[str]) -> None:
+    """Recursively inspect rule items, recording soft warnings and hard errors.
+
+    Errors are findings that produce invalid SecLang and therefore fail
+    validation; warnings are style/quality hints surfaced only by the linter.
+    """
     if not isinstance(rule_item, dict):
         return
 
@@ -454,11 +690,11 @@ def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> N
 
     if has_and:
         for i, sub_rule in enumerate(rule_item["and"]):
-            _analyze_rule_item(sub_rule, f"{rule_path}.and[{i}]", warnings)
+            _analyze_rule_item(sub_rule, f"{rule_path}.and[{i}]", warnings, errors)
 
     if has_or:
         for i, sub_rule in enumerate(rule_item["or"]):
-            _analyze_rule_item(sub_rule, f"{rule_path}.or[{i}]", warnings)
+            _analyze_rule_item(sub_rule, f"{rule_path}.or[{i}]", warnings, errors)
 
     if "match" in rule_item and not (has_and or has_or):
         match = rule_item["match"]
@@ -485,7 +721,7 @@ def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> N
                 # A raw double-quote is emitted inside a double-quoted SecLang
                 # value and breaks the generated rule; the hex escape is safe.
                 if '"' in match_value:
-                    warnings.append(f"Match at {location} contains a literal double-quote; replace it with the hex escape '\\x22' to avoid generating invalid SecLang")
+                    errors.append(f"Match at {location} contains a literal double-quote; replace it with the hex escape '\\x22' to avoid generating invalid SecLang")
 
                 unusual = sorted({c for c in match_value if not c.isprintable() or ord(c) > MAX_ASCII_CODEPOINT})
                 if unusual:
@@ -503,6 +739,31 @@ def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> N
                         )
 
 
+def _render_lint_report(errors: list[str], warnings: list[str], hints: list[str]) -> str:
+    """Format lint findings, most severe first."""
+    sections = (
+        ("❌ ERRORS (rule will fail validation):", errors),
+        ("⚠️  WARNINGS:", warnings),
+        ("💡 HINTS:", hints),
+    )
+    blocks = [
+        "\n".join([title, *(f"  - {item}" for item in items)])
+        for title, items in sections
+        if items
+    ]
+    if not blocks:
+        LOGGER.info("Lint completed with no findings")
+        return "✅ LINT PASSED: No issues found"
+
+    LOGGER.info(
+        "Lint completed with %s error(s), %s warning(s), %s hint(s)",
+        len(errors),
+        len(warnings),
+        len(hints),
+    )
+    return "\n\n".join(blocks)
+
+
 def lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
     """Lint a CrowdSec WAF rule and provide warnings/hints for improvement."""
     LOGGER.info("Linting WAF rule YAML (size=%s bytes)", len(rule_yaml.encode("utf-8")))
@@ -518,6 +779,7 @@ def lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
 
     warnings: list[str] = []
     hints: list[str] = []
+    errors: list[str] = []
 
     if not isinstance(parsed, dict):
         warnings.append("Rule should be a YAML dictionary")
@@ -541,32 +803,12 @@ def lint_waf_rule(rule_yaml: str) -> list[types.TextContent]:
 
     if "rules" in parsed and isinstance(parsed["rules"], list):
         for i, rule in enumerate(parsed["rules"]):
-            _analyze_rule_item(rule, f"[{i}]", warnings)
-
-    result_lines: list[str] = []
-
-    if not warnings and not hints:
-        result_lines.append("✅ LINT PASSED: No issues found")
-        LOGGER.info("Lint completed with no findings")
-    else:
-        if warnings:
-            result_lines.append("⚠️  WARNINGS:")
-            for warning in warnings:
-                result_lines.append(f"  - {warning}")
-            LOGGER.warning("Lint completed with %s warning(s)", len(warnings))
-
-        if hints:
-            if warnings:
-                result_lines.append("")
-            result_lines.append("💡 HINTS:")
-            for hint in hints:
-                result_lines.append(f"  - {hint}")
-            LOGGER.info("Lint completed with %s hint(s)", len(hints))
+            _analyze_rule_item(rule, f"[{i}]", warnings, errors)
 
     return [
         types.TextContent(
             type="text",
-            text="\n".join(result_lines),
+            text=_render_lint_report(errors, warnings, hints),
         )
     ]
 
@@ -860,6 +1102,18 @@ def _tool_prepare_waf_pr(arguments: dict[str, Any] | None) -> list[types.TextCon
     )
     rule_filename = _require_non_empty_str(arguments.get("rule_filename"), "rule_filename")
     nuclei_filename = _require_non_empty_str(arguments.get("nuclei_filename"), "nuclei_filename")
+
+    # Gate before touching the filesystem: this function writes three files and creates
+    # two directories, so a late refusal would leave the hub clone half-written.
+    try:
+        _validate_waf_rule_yaml(rule_yaml)
+    except ValueError as exc:
+        LOGGER.warning("prepare_waf_pr refused an invalid rule: %s", exc)
+        raise ValueError(
+            f"{RULE_VALIDATION_FAILED} - refusing to write PR assets for a rule that will "
+            f"not compile.\n{exc}\nFix the rule, then prepare the PR again."
+        ) from exc
+
     collection_name = arguments.get("collection_name")
     if collection_name is not None and (not isinstance(collection_name, str) or not collection_name.strip()):
         raise ValueError("'collection_name' must be a non-empty string when provided")
@@ -984,7 +1238,9 @@ def _tool_run_waf_tests(arguments: dict[str, Any] | None) -> list[types.TextCont
 
         target_endpoint, stack_error = _start_waf_test_stack(rule_yaml)
         if stack_error:
-            if "appears to be running already" in stack_error.lower():
+            # Only an infrastructure problem is worth a restart; an invalid rule fails
+            # identically on retry, so surface it immediately.
+            if RULE_VALIDATION_FAILED not in stack_error and "appears to be running already" in stack_error.lower():
                 LOGGER.info("Existing stack detected; attempting restart before running tests")
                 _stop_waf_test_stack()
                 target_endpoint, stack_error = _start_waf_test_stack(rule_yaml)
