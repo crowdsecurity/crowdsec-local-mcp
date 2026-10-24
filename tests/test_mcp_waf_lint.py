@@ -49,6 +49,35 @@ def test_double_quote_value_warned() -> None:
     assert "\\x22" in output # noqa: S101
 
 
+def test_double_quote_value_rejected_by_validation() -> None:
+    """A raw double-quote generates invalid SecLang, so validation must fail."""
+    rule_yaml = textwrap.dedent(
+        """
+        name: mycompany/vpatch-xss-comment
+        description: 'Detects a double-quote in the comment parameter'
+        labels:
+          type: exploit
+          service: http
+          behavior: 'http:exploit'
+          confidence: 3
+          spoofable: 0
+          classification:
+            - attack.T1190
+        rules:
+          - zones:
+              - ARGS
+            variables:
+              - comment
+            match:
+              type: contains
+              value: '"'
+        """
+    ).strip()
+
+    with pytest.raises(ValueError, match="literal double-quote"):
+        validate_waf_rule(rule_yaml)
+
+
 def test_same_level_and_or_rejected_by_schema() -> None:
     """A single block carrying both `and` and `or` is invalid (schema oneOf)."""
     rule_yaml = textwrap.dedent(
