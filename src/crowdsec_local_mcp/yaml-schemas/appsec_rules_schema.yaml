@@ -1,16 +1,21 @@
-$schema: "https://json-schema.org/draft-04/schema"
+# Declared draft must stay 2020-12: the file uses `$defs` and `dependentRequired`,
+# and jsonschema silently fell back to 2020-12 while this said draft-04 — which
+# meant the draft-04 spelling of those keywords was being ignored outright.
+$schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "http://schemas.crowdsec.net/schemas/appsec-rule.yaml"
 title: "CrowdSec AppSec Rule"
 
-# Top-level definition for a CrowdSec AppSec rule.
+# Structure of a CrowdSec AppSec (WAF) rule file.
 #
-# This schema is derived from the official CrowdSec AppSec rule
-# specification.  It describes the structure of an application
-# security rule used by the CrowdSec WAF.  A rule defines a
-# human‑readable `name` and `description`, one or more `rules`
-# describing matching conditions, and optional `labels`.  For
-# compatibility with ModSecurity/Seclang rules, `seclang_rules`
-# and `seclang_files_rules` may also be provided.
+# Blocks marked BEGIN/END GENERATED come from the four vocabulary maps in
+# pkg/appsec/appsec_rule/modsecurity.go. Change the Go maps and re-run
+# tools/sync_appsec_vocabulary.py; editing the enums here only reintroduces
+# drift.
+#
+# The engine loads rule files with yaml.UnmarshalStrict, so any unknown field --
+# including a typo such as `tranform` -- makes the whole file fail to load
+# rather than being ignored. Every object below therefore sets
+# additionalProperties: false, to catch that here instead of at runtime.
 type: object
 additionalProperties: false
 properties:
@@ -23,14 +28,19 @@ properties:
     type: string
     description: |
       Free‑form description of what the rule detects.  This text
-      appears in the Hub and the CrowdSec console.
-  format:
-    type: number
+      appears in the Hub and the CrowdSec console, and becomes the
+      `msg` of every generated SecRule.
+  type:
+    type: string
     description: |
-      Optional format version.  If specified, it MUST be a
-      positive number.  This allows CrowdSec to ensure that the
-      running version understands all features used by the rule.
-    minimum: 1.0
+      Hub item type marker.  Optional and rarely set by hand.
+  debug:
+    type: boolean
+    description: |
+      Raise the log level for this rule alone, which is the quickest way
+      to see what the generated SecRule directives actually matched.
+  severity:
+    $ref: "#/$defs/severity"
   rules:
     type: array
     description: |
@@ -43,7 +53,17 @@ properties:
       the rule independently.
     minItems: 1
     items:
-      $ref: "#/$defs/ruleItem"
+      allOf:
+        - $ref: "#/$defs/ruleItem"
+        # The engine validates the top-level item only: a bare condition here
+        # must carry a match value, while the same condition nested under
+        # `and`/`or` may omit it (as the libinjection detectors usually do).
+        - anyOf:
+            - required: [and]
+            - required: [or]
+            - properties:
+                match:
+                  required: [value]
   labels:
     $ref: "#/$defs/labels"
   seclang_rules:
@@ -62,6 +82,39 @@ properties:
       relative file name without path traversal.
     items:
       type: string
+  data:
+    $ref: "#/$defs/data"
+required:
+  - name
+anyOf:
+  - required: ["rules"]
+  - required: ["seclang_rules"]
+  - required: ["seclang_files_rules"]
+  # A rule may carry nothing but `data`: several hub rules exist only to make
+  # cscli download the CRS plugin files that other rules then include.
+  - required: ["data"]
+$defs:
+  severity:
+    description: |
+      Severity attached to the generated SecRule, either a named level or a
+      single digit 0-7 (0 = emergency ... 7 = debug).  Mirrors
+      types.ParseRuleSeverity in CrowdSec's coraza fork.  Defaults to
+      `emergency` when unset.
+    anyOf:
+      - type: string
+        enum:
+          - emergency
+          - alert
+          - critical
+          - error
+          - warning
+          - notice
+          - info
+          - debug
+      - type: integer
+        minimum: 0
+        maximum: 7
+
   data:
     type: array
     description: |
@@ -86,24 +139,46 @@ properties:
         type:
           type: string
           description: |
-            How to interpret the downloaded file.  `modsec` denotes a
-            ModSecurity rules file.  `regex` means the file contains one
-            RE2 regular expression per line, while `string` means one
-            literal string per line.
+            How the downloaded file is indexed in memory, following FileInit
+            in pkg/exprhelpers/helpers.go.  `modsec` and `challenge-js` are
+            downloaded only — coraza and the challenge runtime read them
+            straight off disk.  `regex`/`regexp` hold one RE2 expression per
+            line and `string` one literal per line.
           enum:
             - modsec
+            - challenge-js
             - regex
+            - regexp
             - string
+            - map
+            - bots
+        cache:
+          type: boolean
+          description: |
+            Cache lookups against this file.  Only meaningful for the
+            expression-backed types; set it to `false` to disable caching
+            that `strategy`/`ttl`/`size` would otherwise turn on.
+        strategy:
+          type: string
+          description: |
+            Cache eviction strategy; anything else falls back to `LRU`.
+          enum:
+            - LRU
+            - LFU
+            - ARC
+        size:
+          type: integer
+          minimum: 1
+          description: |
+            Number of cache entries to keep (default 50).
+        ttl:
+          type: string
+          description: |
+            Cache entry lifetime as a Go duration, e.g. `5m` or `1h30m`.
       required:
         - source_url
         - dest_file
-required:
-  - name
-anyOf:
-  - required: ["rules"]
-  - required: ["seclang_rules"]
-  - required: ["seclang_files_rules"]
-$defs:
+
   labels:
     type: object
     description: |
@@ -122,6 +197,10 @@ $defs:
       Additional keys MAY be present and MUST have string, number or
       boolean values.  The schema only constrains known keys and
       leaves room for extensibility.
+
+      The `required` list below is deliberately stricter than the engine,
+      which needs no labels at all: it is the bar for contributing a rule
+      to the hub.
     additionalProperties:
       anyOf:
         - type: string
@@ -161,8 +240,6 @@ $defs:
           - type: array
             items:
               type: string
-      additionalProperties:
-        type: string
     required:
       - type
       - service
@@ -171,51 +248,15 @@ $defs:
       - spoofable
       - classification
 
-  # A ruleItem can either be a leaf rule (matching on request
-  # content) or a composite rule that groups other ruleItems with a
-  # logical operator.  Note: unlike the original schema, this version
-  # omits `additionalProperties: false` at this level.  Without it,
-  # the validator will correctly allow either the `and`/`or` keys of
-  # a composite rule or the `zones`/`match` keys of a leaf rule.
   ruleItem:
     type: object
-    oneOf:
-      - $ref: "#/$defs/compositeRule"
-      - $ref: "#/$defs/leafRule"
-
-  compositeRule:
-    type: object
     additionalProperties: false
     description: |
-      A composite rule groups several sub‑rules together using
-      either `and` or `or`.  Only one of these keys MUST be
-      present.  The evaluation semantics follow boolean logic:
-      * `and`: all sub‑rules MUST match for the composite rule to
-      trigger.
-      * `or`: any sub‑rule matching triggers the composite rule.
-    properties:
-      and:
-        type: array
-        minItems: 1
-        items:
-          $ref: "#/$defs/ruleItem"
-      or:
-        type: array
-        minItems: 1
-        items:
-          $ref: "#/$defs/ruleItem"
-    oneOf:
-      - required: [and]
-      - required: [or]
-
-  leafRule:
-    type: object
-    additionalProperties: false
-    description: |
-      A leaf rule describes a single condition evaluated against
-      specific parts of the HTTP request.  It MUST provide at
-      least one zone via the `zones` list and a `match` object
-      describing the comparison to perform.
+      One rule condition.  A condition inspects `zones` and carries a `match`,
+      groups other conditions under `and`/`or`, or does both — a node that has
+      `zones` alongside `and`/`or` contributes its own match as one more AND
+      term.  `and` and `or` may sit on the same node; the engine flattens the
+      whole tree into disjunctive normal form, capped at 50 resulting groups.
     properties:
       zones:
         type: array
@@ -225,15 +266,14 @@ $defs:
         minItems: 1
         items:
           type: string
+          # BEGIN GENERATED zones (tools/sync_appsec_vocabulary.py)
           enum:
             - ARGS
             - ARGS_NAMES
             - BODY_ARGS
-            - ARGS_POST,
             - BODY_ARGS_NAMES
             - COOKIES
             - COOKIES_NAMES
-            - REQUEST_COOKIES_NAMES
             - FILES
             - FILES_NAMES
             - FILES_TOTAL_SIZE
@@ -245,99 +285,192 @@ $defs:
             - URI_FULL
             - RAW_BODY
             - FILENAMES
+          # END GENERATED zones
       variables:
         type: array
         description: |
-          Restricts the match to specific variable names within the
-          selected zones.  Only relevant when zones include
-          `ARGS`, `BODY_ARGS` or `HEADERS`.  Each entry MUST be
-          a non‑empty string.
+          Restricts the match to specific keys within the selected zones, so
+          it only applies to keyed zones (`ARGS`, `BODY_ARGS`, `HEADERS`,
+          `COOKIES` and their `_NAMES` variants).  An entry is either a literal
+          key name or, when wrapped in slashes (`/pattern_.*/`), an RE2 regexp
+          matched against the available key names.
         items:
           type: string
       transform:
         type: array
         description: |
           List of transformations applied sequentially on the
-          target before performing the match.
+          target before performing the match.  Note that `count` replaces the
+          target with the number of matching keys in the collection, so it
+          only does something when `variables` is also set.
         items:
           type: string
+          # BEGIN GENERATED transforms (tools/sync_appsec_vocabulary.py)
           enum:
             - lowercase
             - uppercase
-            - b64decode
             - length
-            - urldecode
             - trim
+            - trim_left
+            - trim_right
+            - htmlentitydecode
+            - html_entity_decode
+            - js_decode
+            - css_decode
+            - urldecode
+            - hexdecode
+            - cmdline
+            - b64decode
+            - b64decode_lenient
+            - b64encode
+            - normalize_path
             - normalizepath
-            - htmlEntitydecode
+            - normalize_path_win
+            - normalizepathwin
+            - remove_whitespaces
+            - compress_whitespaces
+            - remove_nulls
+            - replace_nulls
+            - remove_comments
+            - replace_comments
             - count
+          # END GENERATED transforms
+      body_type:
+        type: string
+        description: |
+          Force the request body parser for this condition instead of letting
+          the Content-Type decide.
+        # BEGIN GENERATED body-types (tools/sync_appsec_vocabulary.py)
+        enum:
+          - json
+          - xml
+          - multipart
+          - urlencoded
+        # END GENERATED body-types
+      severity:
+        $ref: "#/$defs/severity"
       name:
         type: string
         description: |
-          A single variable name to restrict the match.  This is a
-          convenience shorthand equivalent to specifying `variables` with a
-          one‑element array.
+          Optional label for this condition, used in logs and troubleshooting
+          to tell apart the SecRule directives a single rule expands into.  It
+          does not restrict what is matched — use `variables` for that.
       match:
         $ref: "#/$defs/match"
-    required:
-      - zones
-      - match
+      and:
+        type: array
+        description: |
+          Sub-conditions that must all match.
+        minItems: 1
+        items:
+          $ref: "#/$defs/ruleItem"
+      or:
+        type: array
+        description: |
+          Sub-conditions of which any one matching is enough.
+        minItems: 1
+        items:
+          $ref: "#/$defs/ruleItem"
+    anyOf:
+      - required: [zones]
+      - required: [and]
+      - required: [or]
+    # A condition that names zones has to say what to look for in them, and a
+    # match needs zones to read from.
+    dependentRequired:
+      zones: [match]
+      match: [zones]
 
   match:
     type: object
     description: |
       Specifies how to compare the extracted target against a
-      constant value.  Both `type` and `value` are required.
+      constant value.  `type` is always required; `value` is required except
+      for the libinjection detectors, which take no argument.  Set
+      `not: true` to negate the comparison.
     oneOf:
-      - properties:
+      # Detectors that ignore their argument.
+      - type: object
+        additionalProperties: false
+        properties:
           type:
             type: string
+            # BEGIN GENERATED match-types-valueless (tools/sync_appsec_vocabulary.py)
             enum:
               - libinjectionSQL
               - libinjectionXSS
+            # END GENERATED match-types-valueless
+          value:
+            type: string
+          not:
+            type: boolean
         required:
           - type
+      # String comparisons.
+      - type: object
         additionalProperties: false
-      - properties:
+        properties:
           type:
             type: string
             description: |
               Method used to compare the target to the value.
+            # BEGIN GENERATED match-types-string (tools/sync_appsec_vocabulary.py)
             enum:
               - regex
               - equals
               - startsWith
               - endsWith
               - contains
-              - libinjectionSQL
-              - libinjectionXSS
+              - fromFile
+            # END GENERATED match-types-string
           value:
-            type: string
             description: |
               The constant value to compare the target against. Its meaning
-              depends on the selected `type` (e.g. a RE2 regular expression for
-              `regex`).
+              depends on the selected `type`: an RE2 regular expression for
+              `regex`, or the name of a datafile in the data directory for
+              `fromFile`.
+
+              Non-string types are allowed because the engine reads the raw
+              scalar into a Go string, while a YAML 1.1 parser resolves an
+              unquoted `off` to a boolean and `1` to an integer.  Both forms
+              reach the engine as `"off"` and `"1"`, so rejecting them here
+              would fail rules the engine runs happily — the linter asks for
+              quotes instead.
+            anyOf:
+              - type: string
+              - type: number
+              - type: boolean
+          not:
+            type: boolean
         required:
           - type
           - value
-      - properties:
+      # Numeric comparisons, typically against `length` or `count`.
+      - type: object
+        additionalProperties: false
+        properties:
           type:
             type: string
             description: |
               Method used to compare the target to the value.
+            # BEGIN GENERATED match-types-numeric (tools/sync_appsec_vocabulary.py)
             enum:
               - gt
               - lt
               - gte
               - lte
-              - equals
+              - eq
+            # END GENERATED match-types-numeric
           value:
-            type: number
             description: |
-              The constant value to compare the target against. Its meaning
-              depends on the selected `type` (e.g. gt, lt, gte, lte requires a
-              number)
+              The number to compare the target against.  The engine reads the
+              scalar straight into a string, so `value: 2` and `value: "2"`
+              are equivalent.
+            anyOf:
+              - type: number
+              - type: string
+          not:
+            type: boolean
         required:
           - type
           - value
-        additionalProperties: false

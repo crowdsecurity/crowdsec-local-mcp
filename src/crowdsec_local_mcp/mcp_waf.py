@@ -50,7 +50,9 @@ DEFAULT_EXPLOIT_REPOSITORIES = [
 ]
 DEFAULT_EXPLOIT_TARGET_DIR = SCRIPT_DIR / "cached-exploits"
 
-CASE_SENSITIVE_MATCH_TYPES = ["regex", "contains", "startsWith", "endsWith", "equals"]
+CASE_SENSITIVE_MATCH_TYPES = ["regex", "contains", "startsWith", "endsWith", "equals", "fromFile"]
+# Match types that compare numbers, so an unquoted numeric value is expected.
+NUMERIC_MATCH_TYPES = ["gt", "lt", "gte", "lte", "eq"]
 # Highest ASCII code point; values above it are non-ASCII and risk breaking SecLang.
 MAX_ASCII_CODEPOINT = 127
 SQL_KEYWORD_INDICATORS = ["union", "select", "insert", "update", "delete", "drop"]
@@ -474,6 +476,18 @@ def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> N
                     warnings.append(
                         f"Match at {location} uses '{match_type}' with uppercase letters but no 'lowercase' transform - consider adding lowercase transform for case-insensitive matching"
                     )
+
+            # A non-string under a string comparison means the scalar was
+            # unquoted: YAML 1.1 turns `off` into a boolean and `1` into an
+            # integer. The engine reads the raw text either way, but the rule
+            # reads as a type it is not. Numeric comparisons are exempt - an
+            # unquoted number is the natural way to write those.
+            if match_type not in NUMERIC_MATCH_TYPES and match_value is not None and not isinstance(match_value, str):
+                rendered = "off/on/yes/no" if isinstance(match_value, bool) else repr(match_value)
+                warnings.append(
+                    f"Match at {location} has an unquoted value that YAML read as {type(match_value).__name__} "
+                    f"({rendered}); quote it so it stays the string the engine compares against"
+                )
 
             if isinstance(match_value, str):
                 lower_value = match_value.lower()
