@@ -49,14 +49,20 @@ def test_double_quote_value_warned() -> None:
     assert "\\x22" in output # noqa: S101
 
 
-def test_same_level_and_or_rejected_by_schema() -> None:
-    """A single block carrying both `and` and `or` is invalid (schema oneOf)."""
+def test_same_level_and_or_accepted_by_schema() -> None:
+    """A single block may carry both `and` and `or`; the engine flattens it to DNF."""
     rule_yaml = textwrap.dedent(
         """
         name: mycompany/test-same-level
-        description: 'A single block must not carry both and and or'
+        description: 'A single block may carry both and and or'
         labels:
           type: exploit
+          service: http
+          behavior: 'http:exploit'
+          confidence: 3
+          spoofable: 0
+          classification:
+            - cve.CVE-2026-0001
         rules:
           - and:
               - zones:
@@ -73,8 +79,124 @@ def test_same_level_and_or_rejected_by_schema() -> None:
         """
     ).strip()
 
-    with pytest.raises(ValueError, match="Schema validation error"):
+    validate_waf_rule(rule_yaml)
+
+
+def test_unknown_field_rejected_by_schema() -> None:
+    """A misspelt field is fatal to the engine, so the schema has to catch it."""
+    rule_yaml = textwrap.dedent(
+        """
+        name: mycompany/test-typo
+        description: 'tranform is not transform'
+        labels:
+          type: exploit
+          service: http
+          behavior: 'http:exploit'
+          confidence: 3
+          spoofable: 0
+          classification:
+            - cve.CVE-2026-0001
+        rules:
+          - zones:
+              - URI
+            tranform:
+              - lowercase
+            match:
+              type: contains
+              value: '/a'
+        """
+    ).strip()
+
+    # Labels are complete on purpose: the misspelt field has to be the only
+    # reason validation fails, or the test passes without proving anything.
+    with pytest.raises(ValueError, match="tranform"):
         validate_waf_rule(rule_yaml)
+
+
+def test_expanded_vocabulary_accepted_by_schema() -> None:
+    """Zones, transforms and match types the engine gained are no longer rejected."""
+    rule_yaml = textwrap.dedent(
+        """
+        name: mycompany/test-vocabulary
+        description: 'Exercises vocabulary added after the schema was first written'
+        labels:
+          type: exploit
+          service: http
+          behavior: 'http:exploit'
+          confidence: 3
+          spoofable: 0
+          classification:
+            - cve.CVE-2026-0001
+        rules:
+          - and:
+              - zones:
+                  - METHOD
+                match:
+                  type: equals
+                  value: 'POST'
+              - zones:
+                  - BODY_ARGS
+                variables:
+                  - payload
+                transform:
+                  - b64decode_lenient
+                  - compress_whitespaces
+                  - remove_comments
+                body_type: json
+                match:
+                  type: contains
+                  value: 'exec('
+                  not: true
+        """
+    ).strip()
+
+    validate_waf_rule(rule_yaml)
+
+
+def test_unquoted_match_value_warned() -> None:
+    """An unquoted `off` becomes a bool in YAML, so the linter asks for quotes."""
+    rule_yaml = textwrap.dedent(
+        """
+        name: mycompany/test-unquoted
+        description: 'An unquoted off reads as a boolean'
+        labels:
+          type: exploit
+        rules:
+          - zones:
+              - HEADERS
+            variables:
+              - x-auth-check
+            match:
+              type: equals
+              value: off
+        """
+    ).strip()
+
+    assert "quote it so it stays the string" in lint_output(rule_yaml)  # noqa: S101
+
+
+def test_numeric_match_value_not_warned() -> None:
+    """A numeric comparison is meant to carry a number; it must not be flagged."""
+    rule_yaml = textwrap.dedent(
+        """
+        name: mycompany/test-count
+        description: 'count plus gte is the idiomatic numeric pairing'
+        labels:
+          type: exploit
+        rules:
+          - zones:
+              - BODY_ARGS
+            variables:
+              - 'user[email][]'
+            transform:
+              - count
+            match:
+              type: gte
+              value: 2
+        """
+    ).strip()
+
+    assert "quote it so it stays the string" not in lint_output(rule_yaml)  # noqa: S101
 
 
 def test_case_sensitivity_warning() -> None:
@@ -91,3 +213,56 @@ def test_case_sensitivity_warning() -> None:
 
     output = lint_output(rule_yaml)
     assert "uses 'regex' with uppercase letters but no 'lowercase' transform" in output # noqa: S101
+
+
+def test_composite_node_own_match_analyzed() -> None:
+    """A node carrying both its own match and `and` children gets both linted."""
+    rule_yaml = textwrap.dedent(
+        """
+        name: mycompany/test-composite-match
+        description: 'The outer match is an AND term and must be checked too'
+        labels:
+          type: exploit
+        rules:
+          - zones:
+              - URI
+            match:
+              type: contains
+              value: '/API/v1'
+            and:
+              - zones:
+                  - ARGS
+                variables:
+                  - cmd
+                match:
+                  type: contains
+                  value: '"'
+        """
+    ).strip()
+
+    output = lint_output(rule_yaml)
+    # The outer node's own uppercase value, and the nested node's raw quote.
+    assert "rules[0] uses 'contains' with uppercase letters" in output  # noqa: S101
+    assert "\\x22" in output  # noqa: S101
+
+
+def test_fromfile_value_not_case_warned() -> None:
+    """A fromFile value is a filename, so its casing must not be flagged."""
+    rule_yaml = textwrap.dedent(
+        """
+        name: mycompany/test-fromfile
+        description: 'The value names a datafile, not the compared text'
+        labels:
+          type: exploit
+        rules:
+          - zones:
+              - HEADERS
+            variables:
+              - user-agent
+            match:
+              type: fromFile
+              value: blockedUserAgents.data
+        """
+    ).strip()
+
+    assert "no 'lowercase' transform" not in lint_output(rule_yaml)  # noqa: S101
