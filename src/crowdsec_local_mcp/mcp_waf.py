@@ -50,7 +50,10 @@ DEFAULT_EXPLOIT_REPOSITORIES = [
 ]
 DEFAULT_EXPLOIT_TARGET_DIR = SCRIPT_DIR / "cached-exploits"
 
-CASE_SENSITIVE_MATCH_TYPES = ["regex", "contains", "startsWith", "endsWith", "equals", "fromFile"]
+# `fromFile` is deliberately absent: its value names a datafile rather than the
+# text being compared, and @pmFromFile lowercases every pattern it loads, so it
+# is already case-insensitive and a `lowercase` transform would change nothing.
+CASE_SENSITIVE_MATCH_TYPES = ["regex", "contains", "startsWith", "endsWith", "equals"]
 # Match types that compare numbers, so an unquoted numeric value is expected.
 NUMERIC_MATCH_TYPES = ["gt", "lt", "gte", "lte", "eq"]
 # Highest ASCII code point; values above it are non-ASCII and risk breaking SecLang.
@@ -462,7 +465,9 @@ def _analyze_rule_item(rule_item: Any, rule_path: str, warnings: list[str]) -> N
         for i, sub_rule in enumerate(rule_item["or"]):
             _analyze_rule_item(sub_rule, f"{rule_path}.or[{i}]", warnings)
 
-    if "match" in rule_item and not (has_and or has_or):
+    # A node can carry its own match alongside `and`/`or`, in which case that
+    # match becomes one more AND term - so it needs analysing like any other.
+    if "match" in rule_item:
         match = rule_item["match"]
         if isinstance(match, dict):
             match_type = match.get("type", "")

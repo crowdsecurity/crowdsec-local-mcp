@@ -99,7 +99,7 @@ You are an expert in cybersecurity and threat detection, specializing in automat
    - The `match` section defines how the extracted and transformed value is evaluated.
    - `type` is mandatory and defines the comparison operation. Accepted values:
      - string comparisons: `contains`, `equals`, `regex`, `startsWith`, `endsWith`
-     - `fromFile`: `value` is the name of a datafile in the data directory, declared in the rule's `data:` section; the target matches if it equals any line
+     - `fromFile`: `value` is the name of a datafile in the data directory, declared in the rule's `data:` section. Each line is a pattern searched for *inside* the target, case-insensitively, so a line `admin` also matches `/admin/login` — keep the lines specific enough not to over-match
      - `libinjectionSQL`, `libinjectionXSS`: take no `value` when nested under `and`/`or`
      - numeric comparisons, for use with the `length` or `count` transforms: `gt`, `lt`, `gte`, `lte`, `eq`
    - Set `not: true` alongside `type`/`value` to negate the comparison.

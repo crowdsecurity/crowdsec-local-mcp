@@ -90,6 +90,12 @@ def test_unknown_field_rejected_by_schema() -> None:
         description: 'tranform is not transform'
         labels:
           type: exploit
+          service: http
+          behavior: 'http:exploit'
+          confidence: 3
+          spoofable: 0
+          classification:
+            - cve.CVE-2026-0001
         rules:
           - zones:
               - URI
@@ -101,7 +107,9 @@ def test_unknown_field_rejected_by_schema() -> None:
         """
     ).strip()
 
-    with pytest.raises(ValueError, match="Schema validation error"):
+    # Labels are complete on purpose: the misspelt field has to be the only
+    # reason validation fails, or the test passes without proving anything.
+    with pytest.raises(ValueError, match="tranform"):
         validate_waf_rule(rule_yaml)
 
 
@@ -205,3 +213,56 @@ def test_case_sensitivity_warning() -> None:
 
     output = lint_output(rule_yaml)
     assert "uses 'regex' with uppercase letters but no 'lowercase' transform" in output # noqa: S101
+
+
+def test_composite_node_own_match_analyzed() -> None:
+    """A node carrying both its own match and `and` children gets both linted."""
+    rule_yaml = textwrap.dedent(
+        """
+        name: mycompany/test-composite-match
+        description: 'The outer match is an AND term and must be checked too'
+        labels:
+          type: exploit
+        rules:
+          - zones:
+              - URI
+            match:
+              type: contains
+              value: '/API/v1'
+            and:
+              - zones:
+                  - ARGS
+                variables:
+                  - cmd
+                match:
+                  type: contains
+                  value: '"'
+        """
+    ).strip()
+
+    output = lint_output(rule_yaml)
+    # The outer node's own uppercase value, and the nested node's raw quote.
+    assert "rules[0] uses 'contains' with uppercase letters" in output  # noqa: S101
+    assert "\\x22" in output  # noqa: S101
+
+
+def test_fromfile_value_not_case_warned() -> None:
+    """A fromFile value is a filename, so its casing must not be flagged."""
+    rule_yaml = textwrap.dedent(
+        """
+        name: mycompany/test-fromfile
+        description: 'The value names a datafile, not the compared text'
+        labels:
+          type: exploit
+        rules:
+          - zones:
+              - HEADERS
+            variables:
+              - user-agent
+            match:
+              type: fromFile
+              value: blockedUserAgents.data
+        """
+    ).strip()
+
+    assert "no 'lowercase' transform" not in lint_output(rule_yaml)  # noqa: S101
